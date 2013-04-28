@@ -8,7 +8,7 @@ import java.util.concurrent.locks.*;
  * that can switch between reading and writing. Other readers can acquire the
  * lock while the thread with the upgradable lock is downgraded. The upgradable
  * thread blocks while upgrading if other threads hold read locks.
- * <p>
+ * <p> 
  * A thread can initially acquire the lock in any of three modes: read,
  * upgradable, and write. A thread acquiring an upgradable lock starts in the
  * downgraded state. All locks and unlocks are nested. This means that a thread
