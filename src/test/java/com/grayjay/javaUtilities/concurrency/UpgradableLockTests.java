@@ -124,6 +124,27 @@ public class UpgradableLockTests {
   }
   
   @Test
+  public void testInterruption() throws InterruptedException {
+	final AtomicBoolean mInterrupted = new AtomicBoolean();
+	Thread mThread = new Thread() {
+      @Override
+      public void run() {
+    	try {
+	      myLock.lockInterruptibly(Mode.UPGRADABLE);
+		} catch (InterruptedException e) {
+	      mInterrupted.set(true);
+		}
+      }
+	};
+	lockPermanently(Mode.WRITE);
+	mThread.start();
+	Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+	mThread.interrupt();
+	mThread.join();
+	assertTrue(mInterrupted.get());
+  }
+  
+  @Test
   public void retainInterruptedStatusWithTryLock() throws InterruptedException {
     Thread mCurrent = Thread.currentThread();
     mCurrent.interrupt();

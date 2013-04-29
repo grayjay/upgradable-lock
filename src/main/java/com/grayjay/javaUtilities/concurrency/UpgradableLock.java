@@ -3,8 +3,6 @@ package concurrency;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.*;
 
-//test
-
 /**
  * A reentrant read-write lock allowing at most one designated upgradable thread
  * that can switch between reading and writing. Other readers can acquire the
