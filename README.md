@@ -1,2 +1,1 @@
-JavaUtilities
-=============
+Java utility classes, including an upgradable read-write lock.
