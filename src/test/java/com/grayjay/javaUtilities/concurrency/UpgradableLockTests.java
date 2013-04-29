@@ -1,22 +1,17 @@
 package concurrency;
 
-import java.util.concurrent.CyclicBarrier;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Condition;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.Timeout;
 
 import concurrency.UpgradableLock.Mode;
-
-import static org.junit.Assert.*;
 
 public class UpgradableLockTests {
   private static int MAX_TEST_LENGTH_MILLIS = 5000;
@@ -122,26 +117,26 @@ public class UpgradableLockTests {
       assertFalse(myLock.tryLock(mMode));
     }
   }
-  
+
   @Test
   public void testInterruption() throws InterruptedException {
-	final AtomicBoolean mInterrupted = new AtomicBoolean();
-	Thread mThread = new Thread() {
+    final AtomicBoolean mInterrupted = new AtomicBoolean();
+    Thread mThread = new Thread() {
       @Override
       public void run() {
-    	try {
-	      myLock.lockInterruptibly(Mode.UPGRADABLE);
-		} catch (InterruptedException e) {
-	      mInterrupted.set(true);
-		}
+        try {
+          myLock.lockInterruptibly(Mode.UPGRADABLE);
+        } catch (InterruptedException e) {
+          mInterrupted.set(true);
+        }
       }
-	};
-	lockPermanently(Mode.WRITE);
-	mThread.start();
-	Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
-	mThread.interrupt();
-	mThread.join();
-	assertTrue(mInterrupted.get());
+    };
+    lockPermanently(Mode.WRITE);
+    mThread.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    mThread.interrupt();
+    mThread.join();
+    assertTrue(mInterrupted.get());
   }
   
   @Test
