@@ -17,19 +17,21 @@ import java.util.concurrent.locks.*;
  * lock without releasing the read lock. Calls to downgrade must be matched by
  * calls to upgrade. Calls to upgrade and downgrade can be interleaved with
  * calls to lock and unlock in any order, as long as the thread has an
- * upgradable or write lock when upgrading or downgrading. A thread with a read
- * lock cannot acquire an upgradable or write lock. Any thread with an
+ * upgradable or write lock when upgrading or downgrading. A thread with only a
+ * read lock cannot acquire an upgradable or write lock. Any thread with an
  * upgradable or write lock can acquire the lock again in any of the three
- * modes. The lock excludes readers if a thread has a write lock or has
- * upgraded. Acquiring a read lock after an upgradable or write lock has no
- * effect, though it still must be released.
+ * modes. Acquiring a read lock after an upgradable or write lock has no effect,
+ * though it still must be released.
  * <p>
- * This class allows condition waits for threads that hold write locks or have
- * upgraded.
+ * This class allows {@linkplain Condition condition} waits for threads that
+ * hold write locks or have upgraded.
  * <p>
- * This lock allows running threads to acquire the lock without waiting in the
- * queue, unless the current thread is acquiring a read lock, and a thread is
+ * This lock allows a running thread to acquire the lock without waiting in the
+ * queue, unless the thread is acquiring a read lock, and it detects a thread
  * waiting to upgrade or acquire a write lock at the front of the queue.
+ * <p>
+ * This class is {@linkplain Serializable serializable}. It is always
+ * deserialized in the fully unlocked state.
  */
 public final class UpgradableLock implements Serializable{
   /*
