@@ -236,14 +236,16 @@ public class UpgradableLockTests {
   }
   
   @Test
-  public void serialize() throws IOException, InterruptedException, ClassNotFoundException {
+  public void deserializeInUnlockedState() throws IOException, InterruptedException, ClassNotFoundException {
     lockPermanently(Mode.WRITE);
-    ByteArrayOutputStream mBytes = new ByteArrayOutputStream();
-    ObjectOutputStream mOOS = new ObjectOutputStream(mBytes);
+    ByteArrayOutputStream mOS = new ByteArrayOutputStream();
+    ObjectOutputStream mOOS = new ObjectOutputStream(mOS);
     mOOS.writeObject(myLock);
-    byte[] mSerializedLock = mBytes.toByteArray();
+    byte[] mSerializedLock = mOS.toByteArray();
+    InputStream mIS = new ByteArrayInputStream(mSerializedLock);
+    ObjectInputStream mOIS = new ObjectInputStream(mIS);
     assertTrue(hasWriter());
-    myLock = (UpgradableLock) new ObjectInputStream(new ByteArrayInputStream(mSerializedLock)).readObject();
+    myLock = (UpgradableLock) mOIS.readObject();
     assertTrue(isUnlocked());
   }
   
