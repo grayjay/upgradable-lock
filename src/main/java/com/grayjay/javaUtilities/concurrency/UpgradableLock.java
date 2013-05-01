@@ -1,5 +1,6 @@
 package concurrency;
 
+import java.io.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.*;
 
@@ -30,7 +31,7 @@ import java.util.concurrent.locks.*;
  * queue, unless the current thread is acquiring a read lock, and a thread is
  * waiting to upgrade or acquire a write lock at the front of the queue.
  */
-public final class UpgradableLock {
+public final class UpgradableLock implements Serializable{
   /*
    * This class stores each thread's lock holds in a thread local variable. It
    * uses a subclass of AbstractQueuedSynchronizer (mySync) to manage the queue
@@ -40,12 +41,18 @@ public final class UpgradableLock {
    * mySync and updates the thread local state on success.
    */
   
+  private static final long serialVersionUID = 0L;
+  
   private static final long MIN_TIMEOUT = -1L;
   private static final long NO_WAIT = -2L;
   private static final long NO_TIMEOUT = -3L;
   
   private final Sync mySync = new Sync();
-  private final ThreadLocal<ThreadState> myThreadState = new ThreadLocal<ThreadState>();
+  private transient ThreadLocal<ThreadState> myThreadState;
+  
+  public UpgradableLock() {
+    myThreadState = new ThreadLocal<ThreadState>();
+  }
   
   /**
    * The modes used to acquire the lock.
@@ -149,6 +156,7 @@ public final class UpgradableLock {
      * threads.
      */
     
+    private static final long serialVersionUID = 0L;
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 1;
     
     /* Arguments passed to methods of AbstractQueuedSynchronizer
@@ -268,6 +276,11 @@ public final class UpgradableLock {
     private boolean isFirstQueuedThreadExclusive() {
       Thread mFirst = getFirstQueuedThread();
       return getExclusiveQueuedThreads().contains(mFirst);
+    }
+    
+    private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
+      aOIS.defaultReadObject();
+      setState(calcState(0, 0));
     }
   }
   
@@ -495,5 +508,10 @@ public final class UpgradableLock {
     }
     mState.upgrade();
     return true;
+  }
+  
+  private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
+    aOIS.defaultReadObject();
+    myThreadState = new ThreadLocal<ThreadState>();
   }
 }

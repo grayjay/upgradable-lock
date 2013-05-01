@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.io.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Condition;
@@ -232,6 +233,18 @@ public class UpgradableLockTests {
         }
       }
     };
+  }
+  
+  @Test
+  public void serialize() throws IOException, InterruptedException, ClassNotFoundException {
+    lockPermanently(Mode.WRITE);
+    ByteArrayOutputStream mBytes = new ByteArrayOutputStream();
+    ObjectOutputStream mOOS = new ObjectOutputStream(mBytes);
+    mOOS.writeObject(myLock);
+    byte[] mSerializedLock = mBytes.toByteArray();
+    assertTrue(hasWriter());
+    myLock = (UpgradableLock) new ObjectInputStream(new ByteArrayInputStream(mSerializedLock)).readObject();
+    assertTrue(isUnlocked());
   }
   
   @Test(expected=IllegalMonitorStateException.class)
