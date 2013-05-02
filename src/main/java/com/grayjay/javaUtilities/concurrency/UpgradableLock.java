@@ -512,6 +512,11 @@ public final class UpgradableLock implements Serializable{
     return true;
   }
   
+  @Override
+  public String toString() {
+    return "Upgradable Lock";
+  }
+  
   private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
     aOIS.defaultReadObject();
     myThreadState = new ThreadLocal<ThreadState>();
