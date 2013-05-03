@@ -284,6 +284,23 @@ public final class UpgradableLock implements Serializable{
       aOIS.defaultReadObject();
       setState(calcState(0, 0));
     }
+    
+    @Override
+    public String toString() {
+      int mState = getState();
+      String mMessage;
+      if (hasWriteHold(mState)) {
+        mMessage = "1 write/upgraded thread";
+      } else {
+        int mReadHolds = getReadHolds(mState);
+        if (mReadHolds == 0) mMessage = "unlocked";
+        else {
+          mMessage = mReadHolds + " read/downgraded thread"
+              + (mReadHolds > 1 ? "s" : "");
+        }
+      }
+      return "[" + mMessage + "]";
+    }
   }
   
   /**
@@ -514,7 +531,7 @@ public final class UpgradableLock implements Serializable{
   
   @Override
   public String toString() {
-    return "Upgradable Lock";
+    return "UpgradableLock" + mySync.toString();
   }
   
   private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
