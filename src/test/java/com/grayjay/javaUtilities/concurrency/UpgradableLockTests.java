@@ -238,15 +238,23 @@ public class UpgradableLockTests {
   @Test
   public void deserializeInUnlockedState() throws IOException, InterruptedException, ClassNotFoundException {
     lockPermanently(Mode.WRITE);
+    byte[] mSerializedLock = serialize(myLock);
+    assertTrue(hasWriter());
+    myLock = (UpgradableLock) deserialize(mSerializedLock);
+    assertTrue(isUnlocked());
+  }
+  
+  private static byte[] serialize(Serializable aValue) throws IOException {
     ByteArrayOutputStream mOS = new ByteArrayOutputStream();
     ObjectOutputStream mOOS = new ObjectOutputStream(mOS);
-    mOOS.writeObject(myLock);
-    byte[] mSerializedLock = mOS.toByteArray();
-    InputStream mIS = new ByteArrayInputStream(mSerializedLock);
+    mOOS.writeObject(aValue);
+    return mOS.toByteArray();
+  }
+  
+  private static Serializable deserialize(byte[] aSerialized) throws IOException, ClassNotFoundException {
+    InputStream mIS = new ByteArrayInputStream(aSerialized);
     ObjectInputStream mOIS = new ObjectInputStream(mIS);
-    assertTrue(hasWriter());
-    myLock = (UpgradableLock) mOIS.readObject();
-    assertTrue(isUnlocked());
+    return (Serializable) mOIS.readObject();
   }
   
   @Test(expected=IllegalMonitorStateException.class)
