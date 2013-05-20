@@ -236,12 +236,24 @@ public class UpgradableLockTests {
   }
   
   @Test
-  public void deserializeInUnlockedState() throws IOException, InterruptedException, ClassNotFoundException {
+  public void serializeWithWriter() throws IOException, InterruptedException, ClassNotFoundException {
     lockPermanently(Mode.WRITE);
     byte[] mSerializedLock = serialize(myLock);
     assertTrue(hasWriter());
     myLock = (UpgradableLock) deserialize(mSerializedLock);
     assertTrue(isUnlocked());
+  }
+  
+  @Test
+  public void serializeWithReaders() throws IOException, InterruptedException, ClassNotFoundException {
+    Mode[] mModes = {Mode.READ, Mode.UPGRADABLE};
+    for (Mode mMode : mModes) {
+      lockPermanently(mMode);
+      byte[] mSerializedLock = serialize(myLock);
+      assertTrue(hasReaders());
+      myLock = (UpgradableLock) deserialize(mSerializedLock);
+      assertTrue(isUnlocked());
+    }
   }
   
   private static byte[] serialize(Serializable aValue) throws IOException {
