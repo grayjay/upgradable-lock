@@ -83,17 +83,21 @@ public final class UpgradableLock implements Serializable{
    */
   private static final class ThreadState {
     private static final int NO_WRITE_LOCK = -1;
+    private static final ThreadState NEW_READ = new ThreadState(true);
+    private static final ThreadState NEW_WRITE = new ThreadState(false);
     
     private final boolean myAcquiredReadFirst;
     private final int myUpgradeCount;
     private final int myLockCount;
     private final int myFirstWriteLock;
 
-    ThreadState(boolean aIsRead) {
-      myAcquiredReadFirst = aIsRead;
-      myUpgradeCount = 0;
-      myLockCount = 0;
-      myFirstWriteLock = NO_WRITE_LOCK;
+    static ThreadState newTS(boolean aIsRead) {
+      // reuse instances for efficiency
+      return aIsRead ? NEW_READ : NEW_WRITE;
+    }
+
+    private ThreadState(boolean aIsRead) {
+      this(aIsRead, 0, 0, NO_WRITE_LOCK);
     }
     
     private ThreadState(boolean aReadFirst, int aUpgrades, int aLocks, int aFirstWrite) {
@@ -491,7 +495,7 @@ public final class UpgradableLock implements Serializable{
   
   private boolean readLockInternal(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
     ThreadState mOld = myThreadState.get();
-    ThreadState mNew = (mOld == null) ? new ThreadState(true) : mOld;
+    ThreadState mNew = (mOld == null) ? ThreadState.newTS(true) : mOld;
     mNew = mNew.incrementRead();
     if (mOld == null) {
       if (!mySync.acquireShared(aInterruptible, aTime, aUnit)) return false;
@@ -505,7 +509,7 @@ public final class UpgradableLock implements Serializable{
     if (mOld != null && mOld.acquiredReadFirst()) {
       throw new IllegalMonitorStateException("Cannot upgrade from read");
     }
-    ThreadState mNew = (mOld == null) ? new ThreadState(false) : mOld;
+    ThreadState mNew = (mOld == null) ? ThreadState.newTS(false) : mOld;
     mNew = mNew.incrementWrite();
     if (mOld == null) {
       if (!mySync.acquire(false, aInterruptible, aTime, aUnit)) return false;
@@ -521,7 +525,7 @@ public final class UpgradableLock implements Serializable{
     if (mOld != null && mOld.acquiredReadFirst()) {
       throw new IllegalMonitorStateException("Cannot upgrade from read");
     }
-    ThreadState mNew = (mOld == null) ? new ThreadState(false) : mOld;
+    ThreadState mNew = (mOld == null) ? ThreadState.newTS(false) : mOld;
     mNew = mNew.incrementUpgradable();
     if (mOld == null) {
       if (!mySync.acquireShared(aInterruptible, aTime, aUnit)) return false;
