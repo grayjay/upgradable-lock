@@ -120,7 +120,8 @@ public final class UpgradableLock implements Serializable {
      * upgradable lock.
      */
     boolean isDowngraded() {
-      return myAcquiredReadFirst || myUpgradeCount == 0 && myFirstWriteLock == -1;
+      return myAcquiredReadFirst ||
+          myUpgradeCount == 0 && myFirstWriteLock == NO_WRITE_LOCK;
     }
 
     ThreadState incrementWrite() {
