@@ -50,11 +50,7 @@ public final class UpgradableLock implements Serializable {
   private static final long NO_TIMEOUT = -3L;
   
   private final Sync mySync = new Sync();
-  private transient ThreadLocal<ThreadState> myThreadState;
-  
-  public UpgradableLock() {
-    myThreadState = new ThreadLocal<ThreadState>();
-  }
+  private final ThreadLocal<ThreadState> myThreadState = new ThreadLocal<>();
   
   /**
    * The modes used to acquire the lock.
@@ -175,7 +171,6 @@ public final class UpgradableLock implements Serializable {
      * threads.
      */
     
-    private static final long serialVersionUID = 0L;
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 1;
     
     /* Arguments passed to methods of AbstractQueuedSynchronizer
@@ -295,11 +290,6 @@ public final class UpgradableLock implements Serializable {
     private boolean isFirstQueuedThreadExclusive() {
       Thread mFirst = getFirstQueuedThread();
       return getExclusiveQueuedThreads().contains(mFirst);
-    }
-    
-    private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
-      aOIS.defaultReadObject();
-      setState(calcState(0, 0));
     }
     
     @Override
@@ -556,8 +546,20 @@ public final class UpgradableLock implements Serializable {
     return "UpgradableLock" + mySync.toString();
   }
   
-  private void readObject(ObjectInputStream aOIS) throws IOException, ClassNotFoundException {
-    aOIS.defaultReadObject();
-    myThreadState = new ThreadLocal<ThreadState>();
+  private Object writeReplace() {
+    return new SerializationProxy();
+  }
+  
+  /*
+   * The upgradable lock's constructor must be called after deserialization to
+   * allow all fields to be final but avoid serializing the thread local state.
+   * A serialization proxy makes this easier.
+   */
+  private static final class SerializationProxy implements Serializable {
+    private static final long serialVersionUID = 0L;
+    
+    private Object readResolve() {
+      return new UpgradableLock();
+    }
   }
 }
