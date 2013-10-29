@@ -550,10 +550,14 @@ public final class UpgradableLock implements Serializable {
     return new SerializationProxy();
   }
   
+  private void readObject(ObjectInputStream aOis) throws InvalidObjectException {
+    throw new InvalidObjectException("Expecting serialization proxy");
+  }
+  
   /*
-   * The upgradable lock's constructor must be called after deserialization to
-   * allow all fields to be final but avoid serializing the thread local state.
-   * A serialization proxy makes this easier.
+   * A new upgradable lock must be created after deserialization to allow all
+   * fields to be final while avoiding serializing the thread local state. A
+   * serialization proxy makes this easier.
    */
   private static final class SerializationProxy implements Serializable {
     private static final long serialVersionUID = 0L;
