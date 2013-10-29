@@ -65,7 +65,7 @@ public final class UpgradableLock implements Serializable {
    * Thrown when a thread attempts to acquire or upgrade the lock when the lock
    * already has the maximum number of holds.
    */
-  public static class TooManyHoldsException extends RuntimeException {
+  public static final class TooManyHoldsException extends RuntimeException {
     private static final long serialVersionUID = 0L;
 
     TooManyHoldsException(String aMessage) {
@@ -161,7 +161,7 @@ public final class UpgradableLock implements Serializable {
     }
   }
 
-  private static class Sync extends AbstractQueuedSynchronizer {
+  private static final class Sync extends AbstractQueuedSynchronizer {
     /*
      * This class uses its int state to maintain a count of threads with
      * read/downgraded locks and a count of threads with write/upgraded
