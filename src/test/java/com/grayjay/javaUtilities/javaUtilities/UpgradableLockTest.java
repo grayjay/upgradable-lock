@@ -26,6 +26,7 @@ public class UpgradableLockTest {
   @Before
   public void setup() {
     myLock = new UpgradableLock();
+    Thread.interrupted();
   }
 
   @Test
@@ -101,6 +102,13 @@ public class UpgradableLockTest {
       boolean mSuccess = myLock.tryLock(mMode, 100, TimeUnit.MICROSECONDS);
       assertFalse(mSuccess);
     }
+  }
+  
+  @Test
+  public void testNegativeTimeout() throws InterruptedException {
+    lockPermanently(Mode.UPGRADABLE);
+    boolean mSuccess = myLock.tryLock(Mode.UPGRADABLE, -3L, TimeUnit.MICROSECONDS);
+    assertFalse(mSuccess);
   }
   
   @Test
