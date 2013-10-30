@@ -121,9 +121,13 @@ public final class UpgradableLock implements Serializable {
      * Returns {@code true} if the thread holds only a read lock or a downgraded
      * upgradable lock.
      */
+    boolean canWrite() {
+      return myFirstHold == FirstHold.UPGRADABLE_OR_WRITE &&
+          (myUpgradeCount > 0 || myFirstWriteLock != NO_WRITE_LOCK);
+    }
+
     boolean isDowngraded() {
-      return myFirstHold == FirstHold.NONE || myFirstHold == FirstHold.READ ||
-          myUpgradeCount == 0 && myFirstWriteLock == NO_WRITE_LOCK;
+      return myUpgradeCount == 0;
     }
 
     ThreadState incrementWrite() {
@@ -157,9 +161,6 @@ public final class UpgradableLock implements Serializable {
     }
 
     ThreadState downgrade() {
-      if (myUpgradeCount == 0) {
-        throw new IllegalMonitorStateException("Cannot downgrade without a matching upgrade");
-      }
       return new ThreadState(myFirstHold, myUpgradeCount - 1, myHoldCount, myFirstWriteLock);
     }
     
@@ -384,14 +385,14 @@ public final class UpgradableLock implements Serializable {
     if (mOld.isUnlocked()) {
       throw new IllegalMonitorStateException("Cannot unlock lock that was not held");
     }
-    boolean mWasDowngraded = mOld.isDowngraded();
+    boolean mWasWrite = mOld.canWrite();
     ThreadState mNew = mOld.decrementHolds();
     if (mNew.isUnlocked()) {
-      if (mWasDowngraded) mySync.releaseRead();
-      else mySync.releaseWrite();
+      if (mWasWrite) mySync.releaseWrite();
+      else mySync.releaseRead();
       myThreadState.remove();
       return;
-    } else if (!mWasDowngraded && mNew.isDowngraded()) {
+    } else if (mWasWrite && !mNew.canWrite()) {
       mySync.downgrade();
     }
     myThreadState.set(mNew);
@@ -469,7 +470,7 @@ public final class UpgradableLock implements Serializable {
       throw new IllegalMonitorStateException("Cannot downgrade without upgrade");
     }
     ThreadState mNew = mOld.downgrade();
-    if (mNew.isDowngraded()) {
+    if (!mNew.canWrite()) {
       mySync.downgrade();
     }
     myThreadState.set(mNew);
@@ -512,7 +513,7 @@ public final class UpgradableLock implements Serializable {
     ThreadState mNew = mOld.incrementWrite();
     if (mOld.isUnlocked()) {
       if (!mySync.acquire(false, aInterruptible, aTime, aUnit)) return false;
-    } else if (mOld.isDowngraded()) {
+    } else if (!mOld.canWrite()) {
       if (!mySync.acquire(true, aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
@@ -541,7 +542,7 @@ public final class UpgradableLock implements Serializable {
       throw new IllegalMonitorStateException("Cannot upgrade from read");
     }
     ThreadState mNew = mOld.upgrade();
-    if (mOld.isDowngraded()) {
+    if (!mOld.canWrite()) {
       if (!mySync.acquire(true, aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
