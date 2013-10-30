@@ -21,7 +21,7 @@ public class UpgradableLockTest {
   private UpgradableLock myLock;
   
   @Rule
-  public Timeout mTimeout = new Timeout(MAX_TEST_LENGTH_MILLIS);
+  public Timeout myTimeout = new Timeout(MAX_TEST_LENGTH_MILLIS);
   
   @Before
   public void setup() {

@@ -83,13 +83,13 @@ public final class UpgradableLock implements Serializable {
    * and types of holds that the thread currently has.
    */
   private static final class ThreadState {
-    private static final int NO_WRITE_LOCK = -1;
-    private static final ThreadState NEW = new ThreadState(FirstHold.NONE, 0, 0, NO_WRITE_LOCK);
+    private static final int NO_WRITE_HOLDS = -1;
+    private static final ThreadState NEW = new ThreadState(FirstHold.NONE, 0, 0, NO_WRITE_HOLDS);
     
     private final FirstHold myFirstHold;
     private final int myUpgradeCount;
     private final int myHoldCount;
-    private final int myFirstWriteLock;
+    private final int myFirstWriteHold;
     
     private static enum FirstHold {
       NONE,
@@ -106,7 +106,7 @@ public final class UpgradableLock implements Serializable {
       myFirstHold = aFirstHold;
       myUpgradeCount = aUpgrades;
       myHoldCount = aHolds;
-      myFirstWriteLock = aFirstWrite;
+      myFirstWriteHold = aFirstWrite;
     }
 
     boolean acquiredReadFirst() {
@@ -123,7 +123,7 @@ public final class UpgradableLock implements Serializable {
      */
     boolean canWrite() {
       return myFirstHold == FirstHold.UPGRADABLE_OR_WRITE &&
-          (myUpgradeCount > 0 || myFirstWriteLock != NO_WRITE_LOCK);
+          (myUpgradeCount > 0 || myFirstWriteHold != NO_WRITE_HOLDS);
     }
 
     boolean isDowngraded() {
@@ -132,23 +132,23 @@ public final class UpgradableLock implements Serializable {
 
     ThreadState incrementWrite() {
       int mNewHolds = incrementHolds();
-      int mFirstWrite = (myFirstWriteLock == NO_WRITE_LOCK) ? mNewHolds : myFirstWriteLock;
+      int mFirstWrite = (myFirstWriteHold == NO_WRITE_HOLDS) ? mNewHolds : myFirstWriteHold;
       return new ThreadState(FirstHold.UPGRADABLE_OR_WRITE, myUpgradeCount, mNewHolds, mFirstWrite);
     }
 
     ThreadState incrementUpgradable() {
       int mNewHolds = incrementHolds();
-      return new ThreadState(FirstHold.UPGRADABLE_OR_WRITE, myUpgradeCount, mNewHolds, myFirstWriteLock);
+      return new ThreadState(FirstHold.UPGRADABLE_OR_WRITE, myUpgradeCount, mNewHolds, myFirstWriteHold);
     }
 
     ThreadState incrementRead() {
       FirstHold mFirst = myFirstHold == FirstHold.NONE ? FirstHold.READ : myFirstHold;
       int mNewHolds = incrementHolds();
-      return new ThreadState(mFirst, myUpgradeCount, mNewHolds, myFirstWriteLock);
+      return new ThreadState(mFirst, myUpgradeCount, mNewHolds, myFirstWriteHold);
     }
 
     ThreadState decrementHolds() {
-      int mFirstWrite = (myFirstWriteLock == myHoldCount) ? NO_WRITE_LOCK : myFirstWriteLock;
+      int mFirstWrite = (myFirstWriteHold == myHoldCount) ? NO_WRITE_HOLDS : myFirstWriteHold;
       int mNewHolds = myHoldCount - 1;
       return new ThreadState(myFirstHold, myUpgradeCount, mNewHolds, mFirstWrite);
     }
@@ -157,11 +157,11 @@ public final class UpgradableLock implements Serializable {
       if (myUpgradeCount == Integer.MAX_VALUE) {
         throw new TooManyHoldsException("Too many upgrades");
       }
-      return new ThreadState(myFirstHold, myUpgradeCount + 1, myHoldCount, myFirstWriteLock);
+      return new ThreadState(myFirstHold, myUpgradeCount + 1, myHoldCount, myFirstWriteHold);
     }
 
     ThreadState downgrade() {
-      return new ThreadState(myFirstHold, myUpgradeCount - 1, myHoldCount, myFirstWriteLock);
+      return new ThreadState(myFirstHold, myUpgradeCount - 1, myHoldCount, myFirstWriteHold);
     }
     
     private int incrementHolds() {
