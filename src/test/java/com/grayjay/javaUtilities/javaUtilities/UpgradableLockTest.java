@@ -77,6 +77,7 @@ public class UpgradableLockTest {
     myLock.upgrade();
     assertTrue(hasWriter());
     myLock.unlock();
+    assertTrue(isUnlocked());
     myLock.lock(Mode.UPGRADABLE);
     assertTrue(hasReaders());
   }
@@ -411,6 +412,27 @@ public class UpgradableLockTest {
     } finally {
       assertTrue(isUnlocked());
     }
+  }
+  
+  @Test(expected=NullPointerException.class)
+  public void disallowNullLockModeWithLock() {
+    myLock.lock(null);
+  }
+  
+  @Test(expected=NullPointerException.class)
+  public void disallowNullLockModeWithTryLock() {
+    myLock.tryLock(null);
+  }
+  
+  @Test(expected=NullPointerException.class)
+  public void disallowNullTimeUnitWithLock() throws InterruptedException {
+    myLock.tryLock(Mode.READ, 10, null);
+  }
+  
+  @Test(expected=NullPointerException.class)
+  public void disallowNullTimeUnitWithUpgrade() throws InterruptedException {
+    myLock.lock(Mode.UPGRADABLE);
+    myLock.tryUpgrade(-10, null);
   }
   
   private void lockPermanently(final Mode aMode) throws InterruptedException {
