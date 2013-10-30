@@ -29,7 +29,7 @@ public class UpgradableLockTest {
   }
 
   @Test
-  public void testWriteLock() throws InterruptedException {
+  public void testWriteLock() throws Throwable {
     myLock.lock(Mode.WRITE);
     myLock.lock(Mode.READ);
     assertTrue(hasWriter());
@@ -40,7 +40,7 @@ public class UpgradableLockTest {
   }
 
   @Test
-  public void testUpgrading() throws InterruptedException {
+  public void testUpgrading() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     assertTrue(hasReaders());
     myLock.lock(Mode.READ);
@@ -60,7 +60,7 @@ public class UpgradableLockTest {
   }
 
   @Test
-  public void testReadLock() throws InterruptedException {
+  public void testReadLock() throws Throwable {
     myLock.lock(Mode.READ);
     assertTrue(hasReaders());
     myLock.lock(Mode.READ);
@@ -72,7 +72,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void clearUpgradesAfterFullUnlock() throws InterruptedException {
+  public void clearUpgradesAfterFullUnlock() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     myLock.upgrade();
     assertTrue(hasWriter());
@@ -82,7 +82,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void keepUpgradesAfterReleasingWriteLock() throws InterruptedException {
+  public void keepUpgradesAfterReleasingWriteLock() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     myLock.lock(Mode.WRITE);
     myLock.upgrade();
@@ -103,7 +103,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void testTryLockWhenAvailable() throws InterruptedException {
+  public void testTryLockWhenAvailable() throws Throwable {
     for (Mode mMode : Mode.values()) {
       assertTrue(myLock.tryLock(mMode));
       myLock.unlock();
@@ -158,7 +158,7 @@ public class UpgradableLockTest {
    * wait on a barrier.
    */
   @Test
-  public void allowConcurrentReadAndUpgradableAccess() throws InterruptedException {
+  public void allowConcurrentReadAndUpgradableAccess() throws Throwable {
     int mNThreads = 4;
     final CyclicBarrier mBarrier = new CyclicBarrier(mNThreads);
     final AtomicReference<Throwable> mError = new AtomicReference<Throwable>();
@@ -236,7 +236,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void serializeWithWriter() throws IOException, InterruptedException, ClassNotFoundException {
+  public void serializeWithWriter() throws Throwable {
     lockPermanently(Mode.WRITE);
     byte[] mSerializedLock = serialize(myLock);
     assertTrue(hasWriter());
@@ -245,7 +245,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void serializeWithReaders() throws IOException, InterruptedException, ClassNotFoundException {
+  public void serializeWithReaders() throws Throwable {
     Mode[] mModes = {Mode.READ, Mode.UPGRADABLE};
     for (Mode mMode : mModes) {
       lockPermanently(mMode);
@@ -288,7 +288,7 @@ public class UpgradableLockTest {
    * threads use a counter to try to trade off acquiring the read lock.
    */
   @Test
-  public void preventWriterStarvation() throws InterruptedException {
+  public void preventWriterStarvation() throws Throwable {
     Mode[] mModes = {Mode.WRITE, Mode.UPGRADABLE};
     for (Mode mMode : mModes) {
       final AtomicInteger mCounter = new AtomicInteger();
@@ -329,7 +329,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void releaseWriteWithWaitingThreads() throws InterruptedException {
+  public void releaseWriteWithWaitingThreads() throws Throwable {
     Mode[] mModes = {Mode.UPGRADABLE, Mode.WRITE};
     for (Mode mMode : mModes) {
       Thread mThread = new Thread() {
@@ -352,7 +352,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void releaseReadWithWaitingThreads() throws InterruptedException {
+  public void releaseReadWithWaitingThreads() throws Throwable {
     Mode[] mUnlockModes = {Mode.UPGRADABLE, Mode.READ};
     Mode[] mLockModes = {Mode.UPGRADABLE, Mode.WRITE};
     for (Mode mUnlockMode : mUnlockModes) {
@@ -376,7 +376,7 @@ public class UpgradableLockTest {
   }
 
   @Test(expected=IllegalMonitorStateException.class)
-  public void preventLockingWriteAfterRead() throws InterruptedException {
+  public void preventLockingWriteAfterRead() throws Throwable {
     myLock.lock(Mode.READ);
     try {
       myLock.lock(Mode.WRITE);
@@ -394,7 +394,7 @@ public class UpgradableLockTest {
   }
 
   @Test(expected=IllegalMonitorStateException.class)
-  public void preventDowngradeWithoutUpgrade() throws InterruptedException {
+  public void preventDowngradeWithoutUpgrade() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     try {
       myLock.downgrade();
@@ -405,7 +405,7 @@ public class UpgradableLockTest {
   }
 
   @Test(expected=IllegalMonitorStateException.class)
-  public void preventUnlockWithoutLock() throws InterruptedException {
+  public void preventUnlockWithoutLock() throws Throwable {
     try {
       myLock.unlock();
     } finally {
@@ -426,31 +426,32 @@ public class UpgradableLockTest {
     assertTrue(mSuccess.get());
   }
 
-  private boolean isUnlocked() throws InterruptedException {
+  private boolean isUnlocked() throws Throwable {
     return canLock(Mode.WRITE);
   }
   
-  private boolean hasReaders() throws InterruptedException {
+  private boolean hasReaders() throws Throwable {
     return !canLock(Mode.WRITE) && canLock(Mode.READ);
   }
   
-  private boolean hasWriter() throws InterruptedException {
+  private boolean hasWriter() throws Throwable {
     return !canLock(Mode.READ);
   }
 
-  private boolean canLock(final Mode aMode) throws InterruptedException {
-    final AtomicBoolean mSuccess = new AtomicBoolean();
-    Thread mThread = new Thread() {
+  private boolean canLock(final Mode aMode) throws Throwable {
+    RunnableFuture<Boolean> mFuture = new FutureTask<>(new Callable<Boolean>() {
       @Override
-      public void run() {
-        if (myLock.tryLock(aMode)) {
-          mSuccess.set(true);
-          myLock.unlock();
-        }
+      public Boolean call() {
+        boolean mSuccess = myLock.tryLock(aMode);
+        if (mSuccess) myLock.unlock();
+        return mSuccess;
       }
-    };
-    mThread.start();
-    mThread.join();
-    return mSuccess.get();
+    });
+    new Thread(mFuture).start();
+    try {
+      return mFuture.get();
+    } catch (ExecutionException e) {
+      throw e.getCause();
+    }
   }
 }
