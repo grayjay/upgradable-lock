@@ -14,7 +14,7 @@ import javaUtilities.UpgradableLock.Mode;
 import org.junit.*;
 import org.junit.rules.Timeout;
 
-public class UpgradableLockTests {
+public class UpgradableLockTest {
   private static int MAX_TEST_LENGTH_MILLIS = 5000;
   private static long MAX_WAIT_FOR_LOCK_MILLIS = 10;
   
