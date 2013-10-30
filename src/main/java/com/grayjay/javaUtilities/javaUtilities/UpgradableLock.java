@@ -371,8 +371,8 @@ public final class UpgradableLock implements Serializable {
    *         if the thread is interrupted before or while waiting for the lock.
    */
   public boolean tryLock(Mode aMode, long aTime, TimeUnit aUnit) throws InterruptedException {
-    if (aTime < 0) aTime = MIN_TIMEOUT;
-    return lockInternal(aMode, true, aTime, aUnit);
+    long mTime = boundTimeout(aTime);
+    return lockInternal(aMode, true, mTime, aUnit);
   }
   
   /**
@@ -447,7 +447,8 @@ public final class UpgradableLock implements Serializable {
    *         if the thread is interrupted before or while waiting to upgrade.
    */
   public boolean tryUpgrade(long aTime, TimeUnit aUnit) throws InterruptedException {
-    return upgradeInternal(true, aTime, aUnit);
+    long mTime = boundTimeout(aTime);
+    return upgradeInternal(true, mTime, aUnit);
   }
   
   /**
@@ -547,6 +548,10 @@ public final class UpgradableLock implements Serializable {
     }
     myThreadState.set(mNew);
     return true;
+  }
+  
+  private static long boundTimeout(long aTime) {
+    return aTime < 0 ? MIN_TIMEOUT : aTime;
   }
   
   @Override
