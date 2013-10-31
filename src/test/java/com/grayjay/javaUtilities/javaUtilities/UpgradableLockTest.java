@@ -43,19 +43,19 @@ public class UpgradableLockTest {
   @Test
   public void testUpgrading() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
     myLock.lock(Mode.READ);
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
     myLock.upgrade();
     assertTrue(hasWriter());
     myLock.downgrade();
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
     myLock.lock(Mode.WRITE);
     assertTrue(hasWriter());
     myLock.unlock();
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
     myLock.unlock();
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
     myLock.unlock();
     assertTrue(isUnlocked());
   }
@@ -80,7 +80,7 @@ public class UpgradableLockTest {
     myLock.unlock();
     assertTrue(isUnlocked());
     myLock.lock(Mode.UPGRADABLE);
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
   }
   
   @Test
@@ -92,7 +92,7 @@ public class UpgradableLockTest {
     myLock.unlock();
     assertTrue(hasWriter());
     myLock.downgrade();
-    assertTrue(hasReaders());
+    assertTrue(hasUpgradable());
   }
   
   @Test
@@ -259,7 +259,7 @@ public class UpgradableLockTest {
     for (Mode mMode : mModes) {
       lockPermanently(mMode);
       byte[] mSerializedLock = serialize(myLock);
-      assertTrue(hasReaders());
+      assertFalse(canLock(Mode.WRITE));
       myLock = (UpgradableLock) deserialize(mSerializedLock);
       assertTrue(isUnlocked());
     }
@@ -461,7 +461,11 @@ public class UpgradableLockTest {
   }
   
   private boolean hasReaders() throws Throwable {
-    return !canLock(Mode.WRITE) && canLock(Mode.READ);
+    return !canLock(Mode.WRITE) && canLock(Mode.UPGRADABLE);
+  }
+  
+  private boolean hasUpgradable() throws Throwable {
+    return !canLock(Mode.UPGRADABLE) && canLock(Mode.READ);
   }
   
   private boolean hasWriter() throws Throwable {
