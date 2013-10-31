@@ -214,20 +214,13 @@ public final class UpgradableLock implements Serializable {
     private static final int READ_ARG = calcState(true, true, 2);
     private static final int UPGRADE_DOWNGRADE_ARG = calcState(true, true, 3);
     
-    private static int getArg(Mode aMode) {
+    boolean lock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
       switch (aMode) {
-        case WRITE: return WRITE_ARG;
-        case UPGRADABLE: return UPGRADABLE_ARG;
-        case READ: return READ_ARG;
+        case WRITE: return acquire(WRITE_ARG, aInterruptible, aTime, aUnit);
+        case UPGRADABLE: return acquireShared(UPGRADABLE_ARG, aInterruptible, aTime, aUnit);
+        case READ: return acquireShared(READ_ARG, aInterruptible, aTime, aUnit);
         default: throw new AssertionError();
       }
-    }
-    
-    boolean lock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      int mArg = getArg(aMode);
-      if (aMode == Mode.WRITE) {
-        return acquire(mArg, aInterruptible, aTime, aUnit);
-      } else return acquireShared(mArg, aInterruptible, aTime, aUnit);
     }
 
     boolean upgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
