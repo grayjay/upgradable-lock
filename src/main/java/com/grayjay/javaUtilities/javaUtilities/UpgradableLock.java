@@ -209,55 +209,72 @@ public final class UpgradableLock implements Serializable {
      * constants should be different from allowed lock states to distinguish
      * between releases caused by condition waits and other releases.
      */
-    private static final int WRITE = calcState(true, false, 0);
-    private static final int UPGRADABLE = calcState(true, true, 1);
-    private static final int READ = calcState(true, true, 2);
-    private static final int UPGRADE = calcState(true, true, 3);
-    private static final int DOWNGRADE = calcState(true, true, 4);
+    private static final int WRITE_ARG = calcState(true, false, 0);
+    private static final int UPGRADABLE_ARG = calcState(true, true, 1);
+    private static final int READ_ARG = calcState(true, true, 2);
+    private static final int UPGRADE_DOWNGRADE_ARG = calcState(true, true, 3);
     
-    boolean acquire(boolean aIsUpgrade, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      int mArg = aIsUpgrade ? UPGRADE : WRITE;
-      if (aTime == NO_WAIT) {
-        return tryAcquire(mArg);
-      } else if (aTime == NO_TIMEOUT) {
-        if (aInterruptible) {
-          acquireInterruptibly(mArg); 
-        } else acquire(mArg);
-        return true;
-      } else return tryAcquireNanos(mArg, aUnit.toNanos(aTime));
-    }
-    
-    boolean acquireShared(boolean aIsUpgradable, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      int mArg = aIsUpgradable ? UPGRADABLE : READ;
-      if (aTime == NO_WAIT) {
-        return tryAcquireShared(mArg) >= 0;
-      } else if (aTime == NO_TIMEOUT) {
-        if (aInterruptible) {
-          acquireSharedInterruptibly(mArg); 
-        } else acquireShared(mArg);
-        return true;
-      } else return tryAcquireSharedNanos(mArg, aUnit.toNanos(aTime));
-    }
-    
-    void release(Mode aMode) {
+    private static int getArg(Mode aMode) {
       switch (aMode) {
-        case WRITE: release(WRITE); return;
-        case UPGRADABLE: releaseShared(UPGRADABLE); return;
-        case READ: releaseShared(READ); return;
+        case WRITE: return WRITE_ARG;
+        case UPGRADABLE: return UPGRADABLE_ARG;
+        case READ: return READ_ARG;
+        default: throw new AssertionError();
+      }
+    }
+    
+    boolean lock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      int mArg = getArg(aMode);
+      if (aMode == Mode.WRITE) {
+        return acquire(mArg, aInterruptible, aTime, aUnit);
+      } else return acquireShared(mArg, aInterruptible, aTime, aUnit);
+    }
+
+    boolean upgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      return acquire(UPGRADE_DOWNGRADE_ARG, aInterruptible, aTime, aUnit);
+    }
+    
+    private boolean acquire(int aArg, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      if (aTime == NO_WAIT) {
+        return tryAcquire(aArg);
+      } else if (aTime == NO_TIMEOUT) {
+        if (aInterruptible) {
+          acquireInterruptibly(aArg); 
+        } else acquire(aArg);
+        return true;
+      } else return tryAcquireNanos(aArg, aUnit.toNanos(aTime));
+    }
+    
+    private boolean acquireShared(int aArg, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      if (aTime == NO_WAIT) {
+        return tryAcquireShared(aArg) >= 0;
+      } else if (aTime == NO_TIMEOUT) {
+        if (aInterruptible) {
+          acquireSharedInterruptibly(aArg); 
+        } else acquireShared(aArg);
+        return true;
+      } else return tryAcquireSharedNanos(aArg, aUnit.toNanos(aTime));
+    }
+    
+    void unlock(Mode aMode) {
+      switch (aMode) {
+        case WRITE: release(WRITE_ARG); return;
+        case UPGRADABLE: releaseShared(UPGRADABLE_ARG); return;
+        case READ: releaseShared(READ_ARG); return;
         default: throw new AssertionError();
       }
     }
     
     void downgrade() {
-      release(DOWNGRADE);
+      release(UPGRADE_DOWNGRADE_ARG);
     }
 
     @Override
     protected boolean tryAcquire(int aArg) {
-      assert aArg == UPGRADE || aArg == WRITE;
+      assert aArg == UPGRADE_DOWNGRADE_ARG || aArg == WRITE_ARG;
       int mState = getState();
       if (hasWriteHold(mState) || getReadHolds(mState) > 0) return false;
-      boolean mIsUpgrade = aArg == UPGRADE;
+      boolean mIsUpgrade = aArg == UPGRADE_DOWNGRADE_ARG;
       if (!mIsUpgrade && hasUpgradableHold(mState)) return false;
       int mNewState = calcState(true, false, 0);
       if (compareAndSetState(mState, mNewState)) {
@@ -270,9 +287,9 @@ public final class UpgradableLock implements Serializable {
     @Override
     protected boolean tryRelease(int aArg) {
       if (!isHeldExclusively()) return false;
-      assert aArg == DOWNGRADE || aArg == WRITE : aArg;
+      assert aArg == UPGRADE_DOWNGRADE_ARG || aArg == WRITE_ARG;
       setExclusiveOwnerThread(null);
-      boolean mIsDowngrade = aArg == DOWNGRADE;
+      boolean mIsDowngrade = aArg == UPGRADE_DOWNGRADE_ARG;
       int mNewState = calcState(false, mIsDowngrade, 0);
       setState(mNewState);
       return true;
@@ -280,12 +297,12 @@ public final class UpgradableLock implements Serializable {
     
     @Override
     protected int tryAcquireShared(int aArg) {
-      assert aArg == READ || aArg == UPGRADABLE;
+      assert aArg == READ_ARG || aArg == UPGRADABLE_ARG;
       // prevent writer threads from starving
       if (isFirstQueuedThreadExclusive()) return -1;
       int mState = getState();
       if (hasWriteHold(mState)) return -1;
-      boolean mIsUpgradable = aArg == UPGRADABLE;
+      boolean mIsUpgradable = aArg == UPGRADABLE_ARG;
       int mNewState;
       if (mIsUpgradable) {
         if (hasUpgradableHold(mState)) return -1;
@@ -300,11 +317,11 @@ public final class UpgradableLock implements Serializable {
 
     @Override
     protected boolean tryReleaseShared(int aArg) {
-      assert aArg == READ || aArg == UPGRADABLE;
+      assert aArg == READ_ARG || aArg == UPGRADABLE_ARG;
       int mState, mNewState;
       do {
         mState = getState();
-        boolean mIsUpgradable = aArg == UPGRADABLE;
+        boolean mIsUpgradable = aArg == UPGRADABLE_ARG;
         if (mIsUpgradable) {
           mNewState = setUpgradableHold(mState, false);
         } else {
@@ -330,10 +347,6 @@ public final class UpgradableLock implements Serializable {
     
     private static int getReadHolds(int aState) {
       return aState >>> 2;
-    }
-
-    private static int setWriteHold(int aState, boolean aWrite) {
-      return setBit(aState, 0, aWrite);
     }
     
     private static int setUpgradableHold(int aState, boolean aUpgradable) {
@@ -452,7 +465,7 @@ public final class UpgradableLock implements Serializable {
     ThreadState mNew = mOld.decrementHolds();
     if (mNew.isUnlocked()) {
       Mode mToRelease = mWasWrite ? Mode.WRITE : mOld.getFirstHold();
-      mySync.release(mToRelease);
+      mySync.unlock(mToRelease);
       myThreadState.remove();
       return;
     } else if (mWasWrite && !mNew.canWrite()) {
@@ -563,7 +576,7 @@ public final class UpgradableLock implements Serializable {
     ThreadState mOld = myThreadState.get();
     ThreadState mNew = mOld.incrementRead();
     if (mOld.isUnlocked()) {
-      if (!mySync.acquireShared(false, aInterruptible, aTime, aUnit)) return false;
+      if (!mySync.lock(Mode.READ, aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
     return true;
@@ -576,9 +589,9 @@ public final class UpgradableLock implements Serializable {
     }
     ThreadState mNew = mOld.incrementWrite();
     if (mOld.isUnlocked()) {
-      if (!mySync.acquire(false, aInterruptible, aTime, aUnit)) return false;
+      if (!mySync.lock(Mode.WRITE, aInterruptible, aTime, aUnit)) return false;
     } else if (!mOld.canWrite()) {
-      if (!mySync.acquire(true, aInterruptible, aTime, aUnit)) return false;
+      if (!mySync.upgrade(aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
     return true;
@@ -591,7 +604,7 @@ public final class UpgradableLock implements Serializable {
     }
     ThreadState mNew = mOld.incrementUpgradable();
     if (mOld.isUnlocked()) {
-      if (!mySync.acquireShared(true, aInterruptible, aTime, aUnit)) return false;
+      if (!mySync.lock(Mode.UPGRADABLE, aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
     return true;
@@ -607,7 +620,7 @@ public final class UpgradableLock implements Serializable {
     }
     ThreadState mNew = mOld.upgrade();
     if (!mOld.canWrite()) {
-      if (!mySync.acquire(true, aInterruptible, aTime, aUnit)) return false;
+      if (!mySync.upgrade(aInterruptible, aTime, aUnit)) return false;
     }
     myThreadState.set(mNew);
     return true;
