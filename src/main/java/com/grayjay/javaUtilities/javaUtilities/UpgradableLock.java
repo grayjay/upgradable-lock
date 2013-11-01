@@ -200,6 +200,10 @@ public final class UpgradableLock implements Serializable {
      * allow downgrading. The lowest bit stores the number of writer threads,
      * the next bit stores the number of downgraded threads, and the rest of
      * the state stores the number of reader threads.
+     * 
+     * Threads wait in a queue to acquire the lock in any of the three modes.
+     * If the lock is held by a thread in upgradable mode, that thread waits in
+     * the variable myUpgrading to upgrade.
      */
     
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 2;
