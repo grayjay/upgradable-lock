@@ -301,12 +301,19 @@ public final class UpgradableLock implements Serializable {
       return myState.compareAndSet(mState, mNewState);
     }
 
-    private boolean enqueue(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) {
-      Node mNode = new Node(aMode, Thread.currentThread());
+    private boolean enqueue(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      Thread mCurrent = Thread.currentThread();
+      Node mNode = new Node(aMode, mCurrent);
       myQueue.add(mNode);
+      boolean mInterrupted = false;
       while (myQueue.peek() != mNode || !tryLock(aMode)) {
         LockSupport.park(this);
+        if (Thread.interrupted()) {
+          if (aInterruptible) throw new InterruptedException();
+          else mInterrupted = true;
+        }
       }
+      if (mInterrupted) mCurrent.interrupt();
       myQueue.remove();
       if (aMode == Mode.READ || aMode == Mode.UPGRADABLE) {
         unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
@@ -314,11 +321,18 @@ public final class UpgradableLock implements Serializable {
       return true;
     }
     
-    private boolean enqueueForUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) {
-      myUpgrading.set(Thread.currentThread());
+    private boolean enqueueForUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+      Thread mCurrent = Thread.currentThread();
+      myUpgrading.set(mCurrent);
+      boolean mInterrupted = false;
       while (!tryUpgrade()) {
         LockSupport.park(this);
+        if (Thread.interrupted()) {
+          if (aInterruptible) throw new InterruptedException();
+          else mInterrupted = true;
+        }
       }
+      if (mInterrupted) mCurrent.interrupt();
       return true;
     }
     
