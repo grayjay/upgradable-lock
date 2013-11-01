@@ -279,7 +279,12 @@ public final class UpgradableLock implements Serializable {
       int mNewState;
       switch (aMode) {
         case READ:
-          mNewState = setReadHolds(mState, getReadHolds(mState) + 1);
+          if (nextThreadIsWriter()) return false;
+          int mReadHolds = getReadHolds(mState);
+          if (mReadHolds == MAX_READ_HOLDS) {
+            throw new TooManyHoldsException("Too many reader threads");
+          }
+          mNewState = setReadHolds(mState, mReadHolds + 1);
           break;
         case UPGRADABLE:
           if (hasUpgradableHold(mState)) return false;
@@ -293,7 +298,7 @@ public final class UpgradableLock implements Serializable {
       }
       return myState.compareAndSet(mState, mNewState);
     }
-    
+
     private boolean tryUpgrade() {
       int mState = myState.get();
       if (hasWriteHold(mState)) return false;
@@ -334,6 +339,7 @@ public final class UpgradableLock implements Serializable {
         }
       }
       if (mInterrupted) mCurrent.interrupt();
+      myUpgrading.set(null);
       return true;
     }
     
@@ -349,6 +355,12 @@ public final class UpgradableLock implements Serializable {
       if (mNext != null && aModes.contains(mNext.myMode)) {
         LockSupport.unpark(mNext.myThread);
       }
+    }
+    
+    private boolean nextThreadIsWriter() {
+      if (myUpgrading.get() != null) return true;
+      Node mNext = myQueue.peek();
+      return mNext != null && mNext.myMode == Mode.WRITE;
     }
     
     private static boolean hasWriteHold(int aState) {
