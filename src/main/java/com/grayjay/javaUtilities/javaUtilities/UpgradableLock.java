@@ -322,7 +322,7 @@ public final class UpgradableLock implements Serializable {
           mInterrupted = true;
           if (aInterruptible) {
             myQueue.remove(mNode);
-            unparkAfterUnlock(aMode);
+            unparkNext(EnumSet.allOf(Mode.class), true);
             throw new InterruptedException();
           }
         }
@@ -353,7 +353,7 @@ public final class UpgradableLock implements Serializable {
       }
       myUpgrading = null;
       if (mInterrupted && aInterruptible || mTimedOut) {
-        unparkAfterUnlock(Mode.WRITE);
+        unparkNext(EnumSet.allOf(Mode.class), true);
       }
       if (mInterrupted) {
         if (aInterruptible) throw new InterruptedException();
