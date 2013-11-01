@@ -1,6 +1,6 @@
 package javaUtilities;
 
-import java.util.ConcurrentModificationException;
+import java.util.*;
 import java.util.concurrent.*;
 
 import javaUtilities.UpgradableLock.Mode;
@@ -13,6 +13,7 @@ public class Randomized {
   
   private final UpgradableLock myLock = new UpgradableLock();
   private int myCount = 0;
+  private final List<Thread> myThreads = new CopyOnWriteArrayList<>();
   
   public static void main(String[] aArgs) throws InterruptedException {
     new Randomized().test();
@@ -20,12 +21,16 @@ public class Randomized {
 
   private void test() throws InterruptedException {
     long mStart = System.nanoTime();
-    ExecutorService mPool = Executors.newFixedThreadPool(N_THREADS);
     for (int i = 0; i < N_THREADS; i++) {
-      mPool.execute(newTask());
+      Thread mThread = new Thread(newTask());
+      myThreads.add(mThread);
     }
-    mPool.shutdown();
-    mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+    for (Thread mThread : myThreads) {
+      mThread.start();
+    }
+    for (Thread mThread : myThreads) {
+      mThread.join();
+    }
     long mTotalMicros = (System.nanoTime() - mStart) / 1_000;
     if (!myLock.tryLock(Mode.WRITE)) {
       throw new AssertionError("Lock is still locked: " + myLock);
@@ -43,18 +48,22 @@ public class Randomized {
         try {
           int mSteps = N_STEPS/N_THREADS;
           for (int i = 0; i < mSteps; i++) {
-            switch (i % 4) {
-              case 0: case 1: read(); break;
-              case 2: upgradable(); break;
-              case 3: write(); break;
-              default: throw new AssertionError();
-            }
+            double mChoice = random().nextDouble();
+            if (mChoice < 0.02) interrupt();
+            else if (mChoice < 0.5) read();
+            else if (mChoice < 0.75) upgradable();
+            else write();
           }
         } catch (Throwable e) {
           e.printStackTrace();
         }
       }
     };
+  }
+
+  private void interrupt() {
+    int mIndex = random().nextInt(N_THREADS);
+    myThreads.get(mIndex).interrupt();
   }
 
   private void read() throws InterruptedException {
@@ -77,7 +86,7 @@ public class Randomized {
       int mNext;
       if (mStart % 2 == 1) {
         mNext = mStart + 1;
-        if (nextInt(2) == 0) {
+        if (random().nextInt(2) == 0) {
           myLock.upgrade();
           myCount = mNext;
         } else {
@@ -110,16 +119,21 @@ public class Randomized {
     }
   }
 
-  private static void maybeSleep() throws InterruptedException {
-    if (nextInt(50) == 0) {
-      Thread.sleep(0, nextInt(3));
-    } else if (nextInt(500) == 0) {
-      Thread.sleep(nextInt(3));
+  private static void maybeSleep() {
+    ThreadLocalRandom mRandom = random();
+    try {
+      if (mRandom.nextInt(50) == 0) {
+        Thread.sleep(0, mRandom.nextInt(3));
+      } else if (mRandom.nextInt(500) == 0) {
+        Thread.sleep(mRandom.nextInt(3));
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
   
-  private static int nextInt(int aBound) {
-    return ThreadLocalRandom.current().nextInt(aBound);
+  private static ThreadLocalRandom random() {
+    return ThreadLocalRandom.current();
   }
   
   private static void checkStartAndEnd(int aStart, int aEnd) {
