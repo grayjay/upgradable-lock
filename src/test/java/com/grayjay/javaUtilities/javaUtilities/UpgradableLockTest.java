@@ -311,9 +311,9 @@ public class UpgradableLockTest {
                 myLock.lockInterruptibly(Mode.READ);
                 try {
                   int mStartCount = mCounter.incrementAndGet();
-                  long mEndTime = System.nanoTime() + 5000 * 1000;
+                  long mEndTime = System.nanoTime() + 5_000_000;
                   while (mCounter.get() == mStartCount && System.nanoTime() < mEndTime) {
-                    Thread.sleep(0, 1000);
+                    Thread.sleep(0, 1_000);
                   }
                 } finally {
                   myLock.unlock();
@@ -398,7 +398,7 @@ public class UpgradableLockTest {
       public void run() {
         myLock.lock(Mode.READ);
         try {
-          Thread.sleep(1000);
+          Thread.sleep(1_000);
         } catch (InterruptedException e) {
           return;
         } finally {
