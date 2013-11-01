@@ -202,8 +202,8 @@ public final class UpgradableLock implements Serializable {
      * the state stores the number of reader threads.
      * 
      * Threads wait in a queue to acquire the lock in any of the three modes.
-     * If the lock is held by a thread in upgradable mode, that thread waits in
-     * the variable myUpgrading to upgrade.
+     * If the lock is held by a thread in upgradable mode, that thread waits to
+     * upgrade in the variable myUpgrading.
      */
     
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 2;
@@ -244,7 +244,6 @@ public final class UpgradableLock implements Serializable {
       switch (aMode) {
         case WRITE:
           myState.set(calcState(false, false, 0));
-          unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE, Mode.WRITE), false);
           break;
         case UPGRADABLE: {
           int mState;
@@ -253,7 +252,6 @@ public final class UpgradableLock implements Serializable {
             mState = myState.get();
             mNewState = setUpgradableHold(mState, false);
           } while (!myState.compareAndSet(mState, mNewState));
-          unparkNext(EnumSet.of(Mode.UPGRADABLE, Mode.WRITE), false);
           break;
         }
         case READ: 
@@ -264,11 +262,10 @@ public final class UpgradableLock implements Serializable {
             int mReadHolds = getReadHolds(mState);
             mNewState = setReadHolds(mState, mReadHolds - 1);
           } while (!myState.compareAndSet(mState, mNewState));
-          unparkNext(EnumSet.of(Mode.WRITE), true);
           break;
         default: throw new AssertionError();
       }
-      
+      unparkAfterUnlock(aMode);
     }
     
     void downgrade() {
@@ -278,10 +275,12 @@ public final class UpgradableLock implements Serializable {
 
     
     private boolean tryLock(Mode aMode) {
-      int mState = myState.get();
-      if (hasWriteHold(mState)) return false;
       int mNewState;
-      switch (aMode) {
+      int mState;
+      do {
+        mState = myState.get();
+        if (hasWriteHold(mState)) return false;
+        switch (aMode) {
         case READ:
           if (nextThreadIsWriter()) return false;
           int mReadHolds = getReadHolds(mState);
@@ -299,8 +298,9 @@ public final class UpgradableLock implements Serializable {
           mNewState = calcState(true, false, 0);
           break;
         default: throw new AssertionError();
-      }
-      return myState.compareAndSet(mState, mNewState);
+        }
+      } while (!myState.compareAndSet(mState, mNewState));
+      return true;
     }
 
     private boolean tryUpgrade() {
@@ -316,14 +316,18 @@ public final class UpgradableLock implements Serializable {
       Node mNode = new Node(aMode, mCurrent);
       myQueue.add(mNode);
       boolean mInterrupted = false;
+      boolean mTimedOut = false;
       while (myQueue.peek() != mNode || !tryLock(aMode)) {
         LockSupport.park(this);
         if (Thread.interrupted()) {
           mInterrupted = true;
+          break;
         }
       }
       myQueue.remove();
-      if (aMode == Mode.READ) {
+      if (mInterrupted || mTimedOut) {
+        unparkAfterUnlock(aMode);
+      } else if (aMode == Mode.READ) {
         unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
       } else if (aMode == Mode.UPGRADABLE) {
         unparkNext(EnumSet.of(Mode.READ), false);
@@ -339,18 +343,35 @@ public final class UpgradableLock implements Serializable {
       Thread mCurrent = Thread.currentThread();
       myUpgrading.set(mCurrent);
       boolean mInterrupted = false;
+      boolean mTimedOut = false;
       while (!tryUpgrade()) {
         LockSupport.park(this);
         if (Thread.interrupted()) {
           mInterrupted = true;
+          break;
         }
       }
       myUpgrading.set(null);
+      if (mInterrupted || mTimedOut) {
+        unparkAfterUnlock(Mode.WRITE);
+      }
       if (mInterrupted) {
         if (aInterruptible) throw new InterruptedException();
         mCurrent.interrupt();
       }
       return true;
+    }
+    
+    private void unparkAfterUnlock(Mode aMode) {
+      switch (aMode) {
+        case WRITE:
+          unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE, Mode.WRITE), false); return;
+        case UPGRADABLE:
+          unparkNext(EnumSet.of(Mode.UPGRADABLE, Mode.WRITE), false); return;
+        case READ: 
+          unparkNext(EnumSet.of(Mode.WRITE), true); return;
+        default: throw new AssertionError();
+      }
     }
     
     private void unparkNext(Set<Mode> aModes, boolean aUpgrade) {
