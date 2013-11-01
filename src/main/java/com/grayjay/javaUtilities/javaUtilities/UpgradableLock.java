@@ -321,8 +321,10 @@ public final class UpgradableLock implements Serializable {
       }
       if (mInterrupted) mCurrent.interrupt();
       myQueue.remove();
-      if (aMode == Mode.READ || aMode == Mode.UPGRADABLE) {
+      if (aMode == Mode.READ) {
         unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
+      } else if (aMode == Mode.UPGRADABLE) {
+        unparkNext(EnumSet.of(Mode.READ), false);
       }
       return true;
     }
