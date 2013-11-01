@@ -9,7 +9,7 @@ import javaUtilities.UpgradableLock.Mode;
 public class Randomized {
   private static final int N_THREADS =
       Runtime.getRuntime().availableProcessors() + 1;
-  private static final int N_STEPS = 10_000;
+  private static final int N_STEPS = 1_000_000;
   
   private final UpgradableLock myLock = new UpgradableLock();
   private int myCount = 0;
@@ -123,16 +123,26 @@ public class Randomized {
   }
   
   private boolean tryLock(Mode aMode) {
-    if (random().nextBoolean()) {
-      myLock.lock(aMode);
-    } else {
-      try {
-        myLock.lockInterruptibly(aMode);
-      } catch (InterruptedException e) {
-        return false;
-      }
+    switch (random().nextInt(4)) {
+      case 0: myLock.lock(aMode); return true;
+      case 1: return myLock.tryLock(aMode);
+      case 2: 
+        try {
+          myLock.lockInterruptibly(aMode);
+          return true;
+        } catch (InterruptedException e) {
+          return false;
+        }
+      case 3:
+        try {
+          TimeUnit mUnit = random().nextBoolean() ? TimeUnit.NANOSECONDS : TimeUnit.MICROSECONDS;
+          long mTime = random().nextLong(-100, 100);
+          return myLock.tryLock(aMode, mTime, mUnit);
+        } catch (InterruptedException e) {
+          return false;
+        }
+      default: throw new AssertionError();
     }
-    return true;
   }
 
   private static void maybeSleep() {
@@ -144,7 +154,7 @@ public class Randomized {
         Thread.sleep(mRandom.nextInt(3));
       }
     } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
+      // return
     }
   }
   
