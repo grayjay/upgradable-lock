@@ -44,9 +44,9 @@ public class Randomized {
           int mSteps = N_STEPS/N_THREADS;
           for (int i = 0; i < mSteps; i++) {
             switch (i % 4) {
-              case 0: case 1: read(i); break;
-              case 2: upgradable(i); break;
-              case 3: write(i); break;
+              case 0: case 1: read(); break;
+              case 2: upgradable(); break;
+              case 3: write(); break;
               default: throw new AssertionError();
             }
           }
@@ -54,68 +54,72 @@ public class Randomized {
           e.printStackTrace();
         }
       }
-
-      private void read(int i) throws InterruptedException {
-        myLock.lock(Mode.READ);
-        try {
-          int mStart = myCount;
-          maybeSleep(i);
-          int mEnd = myCount;
-          checkStartAndEnd(mStart, mEnd);
-        } finally {
-          myLock.unlock();
-        }
-      }
-
-      private void upgradable(int i) throws InterruptedException {
-        myLock.lock(Mode.UPGRADABLE);
-        try {
-          int mStart = myCount;
-          maybeSleep(i);
-          int mNext;
-          if (mStart % 2 == 1) {
-            mNext = mStart + 1;
-            if (i % 5 < 3) {
-              myLock.upgrade();
-              myCount = mNext;
-            } else {
-              myLock.lock(Mode.WRITE);
-              try {
-                myCount = mNext;
-              } finally {
-                myLock.unlock();
-              }
-            }
-          } else mNext = mStart;
-          int mEnd = myCount;
-          checkStartAndEnd(mNext, mEnd);
-        } finally {
-          myLock.unlock();
-        }
-      }
-
-      private void write(int i) throws InterruptedException {
-        myLock.lock(Mode.WRITE);
-        try {
-          int mStart = myCount;
-          int mNext = mStart + 1;
-          maybeSleep(i);
-          myCount = mNext;
-          int mEnd = myCount;
-          checkStartAndEnd(mNext, mEnd);
-        } finally {
-          myLock.unlock();
-        }
-      }
-
-      private void maybeSleep(int i) throws InterruptedException {
-        if (i % 53 == 0) {
-          Thread.sleep(0, i % 3);
-        } else if (i % 503 == 0) {
-          Thread.sleep(i % 3);
-        }
-      }
     };
+  }
+
+  private void read() throws InterruptedException {
+    myLock.lock(Mode.READ);
+    try {
+      int mStart = myCount;
+      maybeSleep();
+      int mEnd = myCount;
+      checkStartAndEnd(mStart, mEnd);
+    } finally {
+      myLock.unlock();
+    }
+  }
+
+  private void upgradable() throws InterruptedException {
+    myLock.lock(Mode.UPGRADABLE);
+    try {
+      int mStart = myCount;
+      maybeSleep();
+      int mNext;
+      if (mStart % 2 == 1) {
+        mNext = mStart + 1;
+        if (nextInt(2) == 0) {
+          myLock.upgrade();
+          myCount = mNext;
+        } else {
+          myLock.lock(Mode.WRITE);
+          try {
+            myCount = mNext;
+          } finally {
+            myLock.unlock();
+          }
+        }
+      } else mNext = mStart;
+      int mEnd = myCount;
+      checkStartAndEnd(mNext, mEnd);
+    } finally {
+      myLock.unlock();
+    }
+  }
+
+  private void write() throws InterruptedException {
+    myLock.lock(Mode.WRITE);
+    try {
+      int mStart = myCount;
+      int mNext = mStart + 1;
+      maybeSleep();
+      myCount = mNext;
+      int mEnd = myCount;
+      checkStartAndEnd(mNext, mEnd);
+    } finally {
+      myLock.unlock();
+    }
+  }
+
+  private static void maybeSleep() throws InterruptedException {
+    if (nextInt(50) == 0) {
+      Thread.sleep(0, nextInt(3));
+    } else if (nextInt(500) == 0) {
+      Thread.sleep(nextInt(3));
+    }
+  }
+  
+  private static int nextInt(int aBound) {
+    return ThreadLocalRandom.current().nextInt(aBound);
   }
   
   private static void checkStartAndEnd(int aStart, int aEnd) {
