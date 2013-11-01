@@ -15,7 +15,7 @@ import org.junit.*;
 import org.junit.rules.Timeout;
 
 public class UpgradableLockTest {
-  private static int MAX_TEST_LENGTH_MILLIS = 5000;
+  private static int MAX_TEST_LENGTH_MILLIS = 5_000;
   private static long MAX_WAIT_FOR_LOCK_MILLIS = 10;
   
   private UpgradableLock myLock;
@@ -201,25 +201,25 @@ public class UpgradableLockTest {
     };
   }
 
-  /*
-   * Threads 0 - n wait on a condition for a counter to reach their index
-   * numbers. Then they increment the counter and notify the other threads. The
-   * counter starts at zero to allow the first thread to proceed without
-   * waiting.
-   */
-  @Test
-  public void testCondition() throws InterruptedException {
-    final Condition mIncremented = myLock.newCondition();
-    final AtomicInteger mCounter = new AtomicInteger();
-    ExecutorService mPool = Executors.newCachedThreadPool();
-    int mNThreads = 10;
-    for (int i = 0; i < mNThreads; i++) {
-      mPool.execute(newWaitTask(i, mCounter, mIncremented));
-    }
-    mPool.shutdown();
-    mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-    assertEquals(mNThreads, mCounter.get());
-  }
+//  /*
+//   * Threads 0 - n wait on a condition for a counter to reach their index
+//   * numbers. Then they increment the counter and notify the other threads. The
+//   * counter starts at zero to allow the first thread to proceed without
+//   * waiting.
+//   */
+//  @Test
+//  public void testCondition() throws InterruptedException {
+//    final Condition mIncremented = myLock.newCondition();
+//    final AtomicInteger mCounter = new AtomicInteger();
+//    ExecutorService mPool = Executors.newCachedThreadPool();
+//    int mNThreads = 10;
+//    for (int i = 0; i < mNThreads; i++) {
+//      mPool.execute(newWaitTask(i, mCounter, mIncremented));
+//    }
+//    mPool.shutdown();
+//    mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+//    assertEquals(mNThreads, mCounter.get());
+//  }
   
   private Runnable newWaitTask(
       final int aExpectedCount,
@@ -278,19 +278,19 @@ public class UpgradableLockTest {
     return (Serializable) mOIS.readObject();
   }
   
-  @Test(expected=IllegalMonitorStateException.class)
-  public void preventWaitingWithoutWriteLock() throws InterruptedException {
-    myLock.lock(Mode.READ);
-    Condition mCondition = myLock.newCondition();
-    mCondition.await();
-  }
-
-  @Test(expected=IllegalMonitorStateException.class)
-  public void preventSignallingWithoutWriteLock() {
-    myLock.lock(Mode.UPGRADABLE);
-    Condition mCondition = myLock.newCondition();
-    mCondition.signal();
-  }
+//  @Test(expected=IllegalMonitorStateException.class)
+//  public void preventWaitingWithoutWriteLock() throws InterruptedException {
+//    myLock.lock(Mode.READ);
+//    Condition mCondition = myLock.newCondition();
+//    mCondition.await();
+//  }
+//
+//  @Test(expected=IllegalMonitorStateException.class)
+//  public void preventSignallingWithoutWriteLock() {
+//    myLock.lock(Mode.UPGRADABLE);
+//    Condition mCondition = myLock.newCondition();
+//    mCondition.signal();
+//  }
 
   /*
    * One thread tries to acquire the write lock multiple times while several
@@ -382,6 +382,37 @@ public class UpgradableLockTest {
         assertTrue(isUnlocked());
       }
     }
+  }
+  
+  @Test
+  public void acquireReadAfterUpgradableFailed() throws Throwable {
+    Thread mThread = new Thread() {
+      @Override
+      public void run() {
+        myLock.lock(Mode.UPGRADABLE);
+        myLock.unlock();
+      }
+    };
+    Thread mThread2 = new Thread() {
+      @Override
+      public void run() {
+        myLock.lock(Mode.READ);
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          return;
+        } finally {
+          myLock.unlock();
+          System.out.println("Read unlocked");
+        }
+      }
+    };
+    myLock.lock(Mode.UPGRADABLE);
+    mThread.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    mThread2.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    myLock.upgrade();
   }
 
   @Test(expected=IllegalMonitorStateException.class)

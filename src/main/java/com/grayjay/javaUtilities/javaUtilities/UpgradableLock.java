@@ -1,7 +1,9 @@
 package javaUtilities;
 
 import java.io.*;
-import java.util.concurrent.TimeUnit;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.*;
 
 /**
@@ -186,7 +188,7 @@ public final class UpgradableLock implements Serializable {
     }
   }
 
-  private static final class Sync extends AbstractQueuedSynchronizer {
+  private static final class Sync {
     /*
      * This class uses its int state to maintain 3 counts:
      * 
@@ -202,132 +204,136 @@ public final class UpgradableLock implements Serializable {
     
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 2;
     
-    /* Arguments passed to methods of AbstractQueuedSynchronizer
-     * 
-     * The value for acquiring and releasing a write lock must equal the lock
-     * state before releasing a write lock for conditions to work.  All other
-     * constants should be different from allowed lock states to distinguish
-     * between releases caused by condition waits and other releases.
-     */
-    private static final int WRITE_ARG = calcState(true, false, 0);
-    private static final int UPGRADABLE_ARG = calcState(true, true, 1);
-    private static final int READ_ARG = calcState(true, true, 2);
-    private static final int UPGRADE_DOWNGRADE_ARG = calcState(true, true, 3);
+    private final AtomicInteger myState = new AtomicInteger(calcState(false, false, 0));
+    private final Queue<Node> myQueue = new ConcurrentLinkedQueue<>();
+    private final AtomicReference<Thread> myUpgrading = new AtomicReference<>();
+    
+    private static final class Node {
+      final Mode myMode;
+      final Thread myThread;
+      
+      Node(Mode aMode, Thread aThread) {
+        myMode = aMode;
+        myThread = aThread;
+      }
+    }
     
     boolean lock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      switch (aMode) {
-        case WRITE: return acquire(WRITE_ARG, aInterruptible, aTime, aUnit);
-        case UPGRADABLE: return acquireShared(UPGRADABLE_ARG, aInterruptible, aTime, aUnit);
-        case READ: return acquireShared(READ_ARG, aInterruptible, aTime, aUnit);
-        default: throw new AssertionError();
+      if (aInterruptible && Thread.interrupted()) {
+        throw new InterruptedException();
       }
+      if (tryLock(aMode)) return true;
+      if (aTime == NO_WAIT) return false;
+      return enqueue(aMode, aInterruptible, aTime, aUnit);
     }
 
     boolean upgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      return acquire(UPGRADE_DOWNGRADE_ARG, aInterruptible, aTime, aUnit);
-    }
-    
-    private boolean acquire(int aArg, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      if (aTime == NO_WAIT) {
-        return tryAcquire(aArg);
-      } else if (aTime == NO_TIMEOUT) {
-        if (aInterruptible) {
-          acquireInterruptibly(aArg); 
-        } else acquire(aArg);
-        return true;
-      } else return tryAcquireNanos(aArg, aUnit.toNanos(aTime));
-    }
-    
-    private boolean acquireShared(int aArg, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-      if (aTime == NO_WAIT) {
-        return tryAcquireShared(aArg) >= 0;
-      } else if (aTime == NO_TIMEOUT) {
-        if (aInterruptible) {
-          acquireSharedInterruptibly(aArg); 
-        } else acquireShared(aArg);
-        return true;
-      } else return tryAcquireSharedNanos(aArg, aUnit.toNanos(aTime));
+      if (aInterruptible && Thread.interrupted()) {
+        throw new InterruptedException();
+      }
+      if (tryUpgrade()) return true;
+      if (aTime == NO_WAIT) return false;
+      return enqueueForUpgrade(aInterruptible, aTime, aUnit);
     }
     
     void unlock(Mode aMode) {
       switch (aMode) {
-        case WRITE: release(WRITE_ARG); return;
-        case UPGRADABLE: releaseShared(UPGRADABLE_ARG); return;
-        case READ: releaseShared(READ_ARG); return;
+        case WRITE:
+          myState.set(calcState(false, false, 0));
+          break;
+        case UPGRADABLE: {
+          int mState;
+          int mNewState;
+          do {
+            mState = myState.get();
+            mNewState = setUpgradableHold(mState, false);
+          } while (!myState.compareAndSet(mState, mNewState));
+          unparkNext(EnumSet.of(Mode.UPGRADABLE, Mode.WRITE), false);
+          break;
+        }
+        case READ: 
+          int mState;
+          int mNewState;
+          do {
+            mState = myState.get();
+            int mReadHolds = getReadHolds(mState);
+            mNewState = setReadHolds(mState, mReadHolds - 1);
+          } while (!myState.compareAndSet(mState, mNewState));
+          unparkNext(EnumSet.of(Mode.WRITE), true);
+          break;
         default: throw new AssertionError();
       }
+      
     }
     
     void downgrade() {
-      release(UPGRADE_DOWNGRADE_ARG);
+      myState.set(calcState(false, true, 0));
+      unparkNext(EnumSet.of(Mode.READ), false);
     }
 
-    @Override
-    protected boolean tryAcquire(int aArg) {
-      assert aArg == UPGRADE_DOWNGRADE_ARG || aArg == WRITE_ARG;
-      int mState = getState();
-      if (hasWriteHold(mState) || getReadHolds(mState) > 0) return false;
-      boolean mIsUpgrade = aArg == UPGRADE_DOWNGRADE_ARG;
-      if (!mIsUpgrade && hasUpgradableHold(mState)) return false;
-      int mNewState = calcState(true, false, 0);
-      if (compareAndSetState(mState, mNewState)) {
-        setExclusiveOwnerThread(Thread.currentThread());
-        return true;
-      }
-      return false;
-    }
-
-    @Override
-    protected boolean tryRelease(int aArg) {
-      if (!isHeldExclusively()) return false;
-      assert aArg == UPGRADE_DOWNGRADE_ARG || aArg == WRITE_ARG;
-      setExclusiveOwnerThread(null);
-      boolean mIsDowngrade = aArg == UPGRADE_DOWNGRADE_ARG;
-      int mNewState = calcState(false, mIsDowngrade, 0);
-      setState(mNewState);
-      return true;
-    }
     
-    @Override
-    protected int tryAcquireShared(int aArg) {
-      assert aArg == READ_ARG || aArg == UPGRADABLE_ARG;
-      // prevent writer threads from starving
-      if (isFirstQueuedThreadExclusive()) return -1;
-      int mState = getState();
-      if (hasWriteHold(mState)) return -1;
-      boolean mIsUpgradable = aArg == UPGRADABLE_ARG;
+    private boolean tryLock(Mode aMode) {
+      int mState = myState.get();
+      if (hasWriteHold(mState)) return false;
       int mNewState;
-      if (mIsUpgradable) {
-        if (hasUpgradableHold(mState)) return -1;
-        mNewState = setUpgradableHold(mState, true);
-      } else {
-        int mReadHolds = getReadHolds(mState);
-        if (mReadHolds == MAX_READ_HOLDS) throw new TooManyHoldsException("Too many holds");
-        mNewState = setReadHolds(mState, mReadHolds + 1);
+      switch (aMode) {
+        case READ:
+          mNewState = setReadHolds(mState, getReadHolds(mState) + 1);
+          break;
+        case UPGRADABLE:
+          if (hasUpgradableHold(mState)) return false;
+          mNewState = setUpgradableHold(mState, true);
+          break;
+        case WRITE:
+          if (hasUpgradableHold(mState) || getReadHolds(mState) != 0) return false;
+          mNewState = calcState(true, false, 0);
+          break;
+        default: throw new AssertionError();
       }
-      return compareAndSetState(mState, mNewState) ? 1 : -1;
+      return myState.compareAndSet(mState, mNewState);
+    }
+    
+    private boolean tryUpgrade() {
+      int mState = myState.get();
+      if (hasWriteHold(mState)) return false;
+      if (getReadHolds(mState) != 0) return false;
+      int mNewState = calcState(true, false, 0);
+      return myState.compareAndSet(mState, mNewState);
     }
 
-    @Override
-    protected boolean tryReleaseShared(int aArg) {
-      assert aArg == READ_ARG || aArg == UPGRADABLE_ARG;
-      int mState, mNewState;
-      do {
-        mState = getState();
-        boolean mIsUpgradable = aArg == UPGRADABLE_ARG;
-        if (mIsUpgradable) {
-          mNewState = setUpgradableHold(mState, false);
-        } else {
-          int mReadHolds = getReadHolds(mState);
-          mNewState = setReadHolds(mState, mReadHolds - 1);
-        }
-      } while (!compareAndSetState(mState, mNewState));
+    private boolean enqueue(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) {
+      Node mNode = new Node(aMode, Thread.currentThread());
+      myQueue.add(mNode);
+      while (myQueue.peek() != mNode || !tryLock(aMode)) {
+        LockSupport.park(this);
+      }
+      myQueue.remove();
+      if (aMode == Mode.READ || aMode == Mode.UPGRADABLE) {
+        unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
+      }
       return true;
     }
     
-    @Override
-    protected boolean isHeldExclusively() {
-      return Thread.currentThread().equals(getExclusiveOwnerThread());
+    private boolean enqueueForUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) {
+      myUpgrading.set(Thread.currentThread());
+      while (!tryUpgrade()) {
+        LockSupport.park(this);
+      }
+      return true;
+    }
+    
+    private void unparkNext(Set<Mode> aModes, boolean aUpgrade) {
+      if (aUpgrade) {
+        Thread mUpgrading = myUpgrading.get();
+        if (mUpgrading != null) {
+          LockSupport.unpark(mUpgrading);
+          return;
+        }
+      }
+      Node mNext = myQueue.peek();
+      if (mNext != null && aModes.contains(mNext.myMode)) {
+        LockSupport.unpark(mNext.myThread);
+      }
     }
     
     private static boolean hasWriteHold(int aState) {
@@ -361,14 +367,9 @@ public final class UpgradableLock implements Serializable {
       return mState;
     }
     
-    private boolean isFirstQueuedThreadExclusive() {
-      Thread mFirst = getFirstQueuedThread();
-      return getExclusiveQueuedThreads().contains(mFirst);
-    }
-    
     @Override
     public String toString() {
-      int mState = getState();
+      int mState = myState.get();
       String mMessage;
       if (hasWriteHold(mState)) {
         mMessage = "1 write/upgraded thread";
@@ -544,16 +545,6 @@ public final class UpgradableLock implements Serializable {
       mySync.downgrade();
     }
     myThreadState.set(mNew);
-  }
-  
-  /**
-   * Returns a new {@link Condition} object which can be used for waiting and
-   * notifying other threads. {@linkplain Condition#await() await()} and
-   * {@linkplain Condition#signal() signal()} can only be called by a thread
-   * holding the lock associated with the condition in write or upgraded mode.
-   */
-  public Condition newCondition() {
-    return mySync.new ConditionObject();
   }
   
   private boolean lockInternal(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
