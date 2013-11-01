@@ -272,7 +272,6 @@ public final class UpgradableLock implements Serializable {
       myState.set(calcState(false, true, 0));
       unparkNext(EnumSet.of(Mode.READ), false);
     }
-
     
     private boolean tryLock(Mode aMode) {
       int mState;
@@ -321,19 +320,20 @@ public final class UpgradableLock implements Serializable {
         LockSupport.park(this);
         if (Thread.interrupted()) {
           mInterrupted = true;
-          if (aInterruptible) break;
+          if (aInterruptible) {
+            myQueue.remove(mNode);
+            unparkAfterUnlock(aMode);
+            throw new InterruptedException();
+          }
         }
       }
       myQueue.remove();
-      if (mInterrupted && aInterruptible || mTimedOut) {
-        unparkAfterUnlock(aMode);
-      } else if (aMode == Mode.READ) {
+      if (aMode == Mode.READ) {
         unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
       } else if (aMode == Mode.UPGRADABLE) {
         unparkNext(EnumSet.of(Mode.READ), false);
       }
       if (mInterrupted) {
-        if (aInterruptible) throw new InterruptedException();
         mCurrent.interrupt();
       }
       return true;
