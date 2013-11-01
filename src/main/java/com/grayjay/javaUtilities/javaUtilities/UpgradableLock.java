@@ -210,7 +210,7 @@ public final class UpgradableLock implements Serializable {
     
     private final AtomicInteger myState = new AtomicInteger(calcState(false, false, 0));
     private final Queue<Node> myQueue = new ConcurrentLinkedQueue<>();
-    private final AtomicReference<Thread> myUpgrading = new AtomicReference<>();
+    private volatile Thread myUpgrading;
     
     private static final class Node {
       final Mode myMode;
@@ -341,7 +341,7 @@ public final class UpgradableLock implements Serializable {
     
     private boolean enqueueForUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
       Thread mCurrent = Thread.currentThread();
-      myUpgrading.set(mCurrent);
+      myUpgrading = mCurrent;
       boolean mInterrupted = false;
       boolean mTimedOut = false;
       while (!tryUpgrade()) {
@@ -351,7 +351,7 @@ public final class UpgradableLock implements Serializable {
           if (aInterruptible) break;
         }
       }
-      myUpgrading.set(null);
+      myUpgrading = null;
       if (mInterrupted && aInterruptible || mTimedOut) {
         unparkAfterUnlock(Mode.WRITE);
       }
@@ -376,7 +376,7 @@ public final class UpgradableLock implements Serializable {
     
     private void unparkNext(Set<Mode> aModes, boolean aUpgrade) {
       if (aUpgrade) {
-        Thread mUpgrading = myUpgrading.get();
+        Thread mUpgrading = myUpgrading;
         if (mUpgrading != null) {
           LockSupport.unpark(mUpgrading);
           return;
@@ -389,7 +389,7 @@ public final class UpgradableLock implements Serializable {
     }
     
     private boolean nextThreadIsWriter() {
-      if (myUpgrading.get() != null) return true;
+      if (myUpgrading != null) return true;
       Node mNext = myQueue.peek();
       return mNext != null && mNext.myMode == Mode.WRITE;
     }
