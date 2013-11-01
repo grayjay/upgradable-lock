@@ -240,6 +240,7 @@ public final class UpgradableLock implements Serializable {
       switch (aMode) {
         case WRITE:
           myState.set(calcState(false, false, 0));
+          unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE, Mode.WRITE), false);
           break;
         case UPGRADABLE: {
           int mState;
