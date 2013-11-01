@@ -228,7 +228,7 @@ public final class UpgradableLock implements Serializable {
       }
       if (tryLock(aMode)) return true;
       if (aTime == NO_WAIT) return false;
-      return enqueue(aMode, aInterruptible, aTime, aUnit);
+      return enqueueAndLock(aMode, aInterruptible, aTime, aUnit);
     }
 
     boolean upgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
@@ -237,7 +237,7 @@ public final class UpgradableLock implements Serializable {
       }
       if (tryUpgrade()) return true;
       if (aTime == NO_WAIT) return false;
-      return enqueueForUpgrade(aInterruptible, aTime, aUnit);
+      return enqueueAndUpgrade(aInterruptible, aTime, aUnit);
     }
     
     void unlock(Mode aMode) {
@@ -310,21 +310,25 @@ public final class UpgradableLock implements Serializable {
       return myState.compareAndSet(mState, mNewState);
     }
 
-    private boolean enqueue(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+    private boolean enqueueAndLock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
       Thread mCurrent = Thread.currentThread();
       Node mNode = new Node(aMode, mCurrent);
       myQueue.add(mNode);
+      long mDeadline = System.nanoTime() + aUnit.toNanos(aTime);
       boolean mInterrupted = false;
-      boolean mTimedOut = false;
       while (myQueue.peek() != mNode || !tryLock(aMode)) {
-        LockSupport.park(this);
-        if (Thread.interrupted()) {
-          mInterrupted = true;
-          if (aInterruptible) {
-            myQueue.remove(mNode);
-            unparkNext(EnumSet.allOf(Mode.class), true);
-            throw new InterruptedException();
+        if (aTime != NO_TIMEOUT) {
+          parkUntil(mDeadline);
+          if (System.nanoTime() > mDeadline) {
+            removeFailedNodeAndSignal(mNode);
+            return false;
           }
+        } else LockSupport.park(this);
+        if (Thread.interrupted()) {
+          if (aInterruptible) {
+            removeFailedNodeAndSignal(mNode);
+            throw new InterruptedException();
+          } else mInterrupted = true;
         }
       }
       myQueue.remove();
@@ -339,7 +343,17 @@ public final class UpgradableLock implements Serializable {
       return true;
     }
     
-    private boolean enqueueForUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+    private void removeFailedNodeAndSignal(Node aNode) {
+      myQueue.remove(aNode);
+      unparkNext(EnumSet.allOf(Mode.class), true);
+    }
+    
+    private void parkUntil(long aDeadlineNanos) {
+      long mStart = System.nanoTime();
+      LockSupport.parkNanos(this, aDeadlineNanos - mStart);
+    }
+
+    private boolean enqueueAndUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
       Thread mCurrent = Thread.currentThread();
       myUpgrading = mCurrent;
       boolean mInterrupted = false;
@@ -606,6 +620,7 @@ public final class UpgradableLock implements Serializable {
   }
   
   private boolean lockInternal(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+    Objects.requireNonNull(aUnit, "Null time unit");
     switch (aMode) {
       case READ: return readLockInternal(aInterruptible, aTime, aUnit);
       case UPGRADABLE: return upgradableLockInternal(aInterruptible, aTime, aUnit);
