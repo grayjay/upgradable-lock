@@ -326,7 +326,10 @@ public class UpgradableLockTest {
         });
       }
       for (int i = 0; i < 5; i++) {
-        Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+        int mCount = mCounter.get();
+        while (mCount == mCounter.get()) {
+          // wait for readers to acquire lock
+        }
         myLock.lock(mMode);
         myLock.upgrade();
         myLock.unlock();
