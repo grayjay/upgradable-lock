@@ -403,18 +403,18 @@ public class UpgradableLockTest {
         myLock.unlock();
       }
     };
+    final AtomicReference<Throwable> mError = new AtomicReference<>();
     final CyclicBarrier mBarrier = new CyclicBarrier(2);
     Thread mThread3 = new Thread() {
       @Override
       public void run() {
-        myLock.lock(Mode.READ);
         try {
+          myLock.lock(Mode.READ);
           mBarrier.await();
           Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
-        } catch (Exception e) {
-          //
-        } finally {
           myLock.unlock();
+        } catch (Throwable e) {
+          mError.set(e);
         }
       }
     };
@@ -425,6 +425,7 @@ public class UpgradableLockTest {
     mBarrier.await();
     myLock.upgrade();
     mThread3.join();
+    assertEquals(null, mError.get());
   }
 
   @Test(expected=IllegalMonitorStateException.class)
