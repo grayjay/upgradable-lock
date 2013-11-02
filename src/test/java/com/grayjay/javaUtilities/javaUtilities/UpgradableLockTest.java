@@ -384,35 +384,44 @@ public class UpgradableLockTest {
     }
   }
   
+  /*
+   * Thread 1 locks upgradable. Then Thread 2 waits for upgradable. Thread 3
+   * temporarily locks read while Thread 1 tries to upgrade, ensuring that
+   * Thread 1 blocks. This could cause a deadlock if Thread 3 signals the
+   * longest waiting thread, instead of the thread waiting to upgrade.
+   * Thread 1 should unblock and upgrade.
+   */
   @Test
-  public void acquireReadAfterUpgradableFailed() throws Throwable {
-    Thread mThread = new Thread() {
+  public void upgradeAfterBlocking() throws Throwable {
+    Thread mThread2 = new Thread() {
       @Override
       public void run() {
         myLock.lock(Mode.UPGRADABLE);
         myLock.unlock();
       }
     };
-    Thread mThread2 = new Thread() {
+    final CyclicBarrier mBarrier = new CyclicBarrier(2);
+    Thread mThread3 = new Thread() {
       @Override
       public void run() {
         myLock.lock(Mode.READ);
         try {
-          Thread.sleep(1_000);
-        } catch (InterruptedException e) {
-          return;
+          mBarrier.await();
+          Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+        } catch (Exception e) {
+          //
         } finally {
           myLock.unlock();
-          System.out.println("Read unlocked");
         }
       }
     };
     myLock.lock(Mode.UPGRADABLE);
-    mThread.start();
-    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     mThread2.start();
     Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    mThread3.start();
+    mBarrier.await();
     myLock.upgrade();
+    mThread3.join();
   }
 
   @Test(expected=IllegalMonitorStateException.class)
