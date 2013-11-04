@@ -13,7 +13,7 @@ public class LockTimer {
 
   private static final int COLUMN_WIDTH = 25;
   
-  private int myLockCount = 0;
+  private int myCount = 0;
   
   public static void main(String[] aArgs) throws InterruptedException {
     printColumn("ReentrantReadWriteLock");
@@ -21,7 +21,7 @@ public class LockTimer {
     printColumn("ReentrantLock)");
     System.out.println();
     System.out.println();
-    System.out.printf("%,d trials with %,d locks per trial (ns/lock)", N_TRIALS, N_LOCKS);
+    System.out.printf("%,d trials with %,d threads and %,d total locks per trial (ns/lock)", N_TRIALS, N_THREADS, N_LOCKS);
     long mReadWriteNanos = 0;
     long mUpgradableNanos = 0;
     long mReentrantLockNanos = 0;
@@ -68,7 +68,7 @@ public class LockTimer {
   }
   
   private long timeNanos(LockTest aTest) throws InterruptedException {
-    assert myLockCount == 0;
+    assert myCount == 0;
     ExecutorService mPool = Executors.newFixedThreadPool(N_THREADS);
     long mStart = System.nanoTime();
     for (int i = 0; i < N_THREADS; i++) {
@@ -85,29 +85,33 @@ public class LockTimer {
       @Override
       public void run() {
         for (int i = 0; i < N_LOCKS / N_THREADS; i++) {
-          boolean mWrite = i % 3 == 0;
-          if (mWrite) {
-            aTest.lockWrite();
-            write();
-            aTest.unlockWrite();
-          } else {
-            aTest.lockRead();
-            read();
-            aTest.unlockRead();
+          switch (i % 4) {
+            case 0:
+              aTest.lockWrite();
+              myCount++;
+              aTest.unlockWrite();
+              break;
+            case 1:
+              aTest.lockUpgradable();
+              if (myCount % 2 == 0) {
+                aTest.upgrade();
+                myCount++;
+                aTest.downgrade();
+              }
+              aTest.unlockUpgradable();
+              break;
+            case 2: case 3:
+              aTest.lockRead();
+              if (myCount == 0.375 * N_LOCKS) {
+                System.out.print(" ");
+              }
+              aTest.unlockRead();
+              break;
+            default: throw new AssertionError();
           }
         }
       }
     };
-  }
-
-  private void read() {
-    if (myLockCount == 3210123) {
-      System.out.print(" ");
-    }
-  }
-
-  private void write() {
-    myLockCount++;
   }
 
   private static interface LockTest {
@@ -115,6 +119,10 @@ public class LockTimer {
     void unlockRead();
     void lockWrite();
     void unlockWrite();
+    void lockUpgradable();
+    void unlockUpgradable();
+    void upgrade();
+    void downgrade();
   }
   
   private static final class ReadWriteLockTest implements LockTest {
@@ -141,6 +149,24 @@ public class LockTimer {
     public void unlockWrite() {
       myWriteLock.unlock();
     }
+
+    @Override
+    public void lockUpgradable() {
+      myWriteLock.lock();
+    }
+
+    @Override
+    public void unlockUpgradable() {
+      myWriteLock.unlock();
+    }
+
+    @Override
+    public void upgrade() {
+    }
+
+    @Override
+    public void downgrade() {
+    }
   }
   
   private static final class UpgradableLockTest implements LockTest {
@@ -165,6 +191,26 @@ public class LockTimer {
     public void unlockWrite() {
       myUpgradableLock.unlock();
     }
+
+    @Override
+    public void lockUpgradable() {
+      myUpgradableLock.lock(Mode.UPGRADABLE);
+    }
+
+    @Override
+    public void unlockUpgradable() {
+      myUpgradableLock.unlock();
+    }
+
+    @Override
+    public void upgrade() {
+      myUpgradableLock.upgrade();
+    }
+
+    @Override
+    public void downgrade() {
+      myUpgradableLock.downgrade();
+    }
   }
 
   private static final class ReentrantLockTest implements LockTest {
@@ -188,6 +234,24 @@ public class LockTimer {
     @Override
     public void unlockWrite() {
       myReentrantLock.unlock();
+    }
+
+    @Override
+    public void lockUpgradable() {
+      myReentrantLock.lock();
+    }
+
+    @Override
+    public void unlockUpgradable() {
+      myReentrantLock.unlock();
+    }
+
+    @Override
+    public void upgrade() {
+    }
+
+    @Override
+    public void downgrade() {
     }
   }
 }
