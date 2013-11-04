@@ -14,46 +14,51 @@ public class LockTimer {
   private int myLockCount = 0;
   
   public static void main(String[] aArgs) throws InterruptedException {
-    System.out.print("Read/Write\tUpgradable\tReentrant");
-    long mReadWriteTotal = 0;
-    long mUpgradableTotal = 0;
-    long mReentrantLockTotal = 0;
+    System.out.println("ReentrantReadWriteLock\tUpgradable\t\tReentrantLock");
+    System.out.println();
+    System.out.printf("%,d trials with %,d locks per trial (ns/lock)", N_TRIALS, N_LOCKS);
+    long mReadWriteNanos = 0;
+    long mUpgradableNanos = 0;
+    long mReentrantLockNanos = 0;
     for (int i = 0; i < N_TRIALS; i++) {
-      long mReadWriteTime = new LockTimer().test(new ReadWriteLockTest());
-      long mUpgradableTime = new LockTimer().test(new UpgradableLockTest());
-      long mReentrantLockTime = new LockTimer().test(new ReentrantLockTest());
+      long mReadWriteTime = new LockTimer().timeNanos(new ReadWriteLockTest());
+      long mUpgradableTime = new LockTimer().timeNanos(new UpgradableLockTest());
+      long mReentrantLockTime = new LockTimer().timeNanos(new ReentrantLockTest());
       System.out.println();
-      System.out.print(mReadWriteTime + "\t\t" + mUpgradableTime + "\t\t" + mReentrantLockTime);
-      mReadWriteTotal += mReadWriteTime;
-      mUpgradableTotal += mUpgradableTime;
-      mReentrantLockTotal += mReentrantLockTime;
+      printTrial(mReadWriteTime);
+      printTrial(mUpgradableTime);
+      printTrial(mReentrantLockTime);
+      mReadWriteNanos += mReadWriteTime;
+      mUpgradableNanos += mUpgradableTime;
+      mReentrantLockNanos += mReentrantLockTime;
     }
     System.out.println();
     System.out.println();
-    System.out.println("Average:");
-    printAvg(mReadWriteTotal);
-    printAvg(mUpgradableTotal);
-    printAvg(mReentrantLockTotal);
+    long[] mTotals = {mReadWriteNanos, mUpgradableNanos, mReentrantLockNanos};
+    System.out.println("Average (ns/lock)");
+    for (long mTotal : mTotals) {
+      printTrial(mTotal / N_TRIALS);
+    }
     System.out.println();
     System.out.println();
-    System.out.println("Total / ReadWrite:");
-    printRatio(mReadWriteTotal, mReadWriteTotal);
-    printRatio(mUpgradableTotal, mReadWriteTotal);
-    printRatio(mReentrantLockTotal, mReadWriteTotal);
+    System.out.println("Total / ReentrantReadWriteLock:");
+    for (long mTotal : mTotals) {
+      printRatio(mTotal, mReadWriteNanos);
+    }
   }
   
-  private static void printAvg(long aTotal) {
-//    double mAvg = (double) aTotal / (N_TRIALS * N_LOCKS);
-    long mAvg = aTotal / N_TRIALS;
-    System.out.print(mAvg + "\t\t");
+  private static void printTrial(long aNanos) {
+    double mAvg = (double) aNanos / N_LOCKS;
+    System.out.printf("%.4f\t\t", mAvg);
   }
 
   private static void printRatio(long aTotal, long aDenom) {
     double mRatio = (double) aTotal / aDenom;
-    System.out.printf("%.4f\t\t", mRatio);
+    System.out.printf("%.6f\t\t", mRatio);
   }
   
-  private long test(LockTest aTest) throws InterruptedException {
+  private long timeNanos(LockTest aTest) throws InterruptedException {
+    assert myLockCount == 0;
     ExecutorService mPool = Executors.newFixedThreadPool(N_THREADS);
     long mStart = System.nanoTime();
     for (int i = 0; i < N_THREADS; i++) {
@@ -62,9 +67,7 @@ public class LockTimer {
     }
     mPool.shutdown();
     mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-    long mEnd = System.nanoTime();
-    long mMillis = (mEnd - mStart) / 1_000_000;
-    return mMillis;
+    return System.nanoTime() - mStart;
   }
 
   private Runnable newTask(final LockTest aTest) {
