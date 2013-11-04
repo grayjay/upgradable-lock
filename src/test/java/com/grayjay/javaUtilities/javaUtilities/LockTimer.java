@@ -10,11 +10,16 @@ public class LockTimer {
   private static final int N_TRIALS = 10;
   private static final int N_THREADS = Runtime.getRuntime().availableProcessors() + 1;
   private static final int N_LOCKS = 1_000_000;
+
+  private static final int COLUMN_WIDTH = 25;
   
   private int myLockCount = 0;
   
   public static void main(String[] aArgs) throws InterruptedException {
-    System.out.println("ReentrantReadWriteLock\tUpgradable\t\tReentrantLock");
+    printColumn("ReentrantReadWriteLock");
+    printColumn("UpgradableLock");
+    printColumn("ReentrantLock)");
+    System.out.println();
     System.out.println();
     System.out.printf("%,d trials with %,d locks per trial (ns/lock)", N_TRIALS, N_LOCKS);
     long mReadWriteNanos = 0;
@@ -43,18 +48,23 @@ public class LockTimer {
     System.out.println();
     System.out.println("Total / ReentrantReadWriteLock:");
     for (long mTotal : mTotals) {
-      printRatio(mTotal, mReadWriteNanos);
+      double mRatio = (double) mTotal / mReadWriteNanos;
+      printColumn(formatFloating(mRatio));
     }
+    System.out.println();
   }
   
   private static void printTrial(long aNanos) {
     double mAvg = (double) aNanos / N_LOCKS;
-    System.out.printf("%.4f\t\t", mAvg);
+    printColumn(formatFloating(mAvg));
   }
-
-  private static void printRatio(long aTotal, long aDenom) {
-    double mRatio = (double) aTotal / aDenom;
-    System.out.printf("%.6f\t\t", mRatio);
+  
+  private static void printColumn(String aString) {
+    System.out.printf("%-" + COLUMN_WIDTH + "s", aString);
+  }
+  
+  private static String formatFloating(double aFloating) {
+    return String.format("%.4f", aFloating);
   }
   
   private long timeNanos(LockTest aTest) throws InterruptedException {
