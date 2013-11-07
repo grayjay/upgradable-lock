@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.*;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Condition;
@@ -130,23 +131,22 @@ public class UpgradableLockTest {
 
   @Test
   public void testInterruption() throws Throwable {
-    final AtomicBoolean mInterrupted = new AtomicBoolean();
-    Thread mThread = new Thread() {
+    ResultThread<Boolean> mThread = new ResultThread<>(new Callable<Boolean>() {
       @Override
-      public void run() {
+      public Boolean call() {
         try {
           myLock.lockInterruptibly(Mode.UPGRADABLE);
+          return false;
         } catch (InterruptedException e) {
-          mInterrupted.set(true);
+          return true;
         }
       }
-    };
+    });
     lockPermanently(Mode.WRITE);
     mThread.start();
     Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     mThread.interrupt();
-    mThread.join();
-    assertTrue(mInterrupted.get());
+    assertTrue(mThread.get());
   }
   
   @Test
@@ -302,10 +302,11 @@ public class UpgradableLockTest {
     for (Mode mMode : mModes) {
       final AtomicInteger mCounter = new AtomicInteger();
       ExecutorService mPool = Executors.newCachedThreadPool();
+      Collection<Future<Void>> mFutures = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
-        mPool.execute(new Runnable() {
+        mFutures.add(mPool.submit(new Callable<Void>() {
           @Override
-          public void run() {
+          public Void call() {
             try {
               while (true) {
                 myLock.lockInterruptibly(Mode.READ);
@@ -320,10 +321,10 @@ public class UpgradableLockTest {
                 }
               }
             } catch (InterruptedException e) {
-              // return
+              return null; // result ignored
             }
           }
-        });
+        }));
       }
       for (int i = 0; i < 5; i++) {
         int mCount = mCounter.get();
@@ -335,7 +336,13 @@ public class UpgradableLockTest {
         myLock.unlock();
       }
       mPool.shutdownNow();
-      mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
+      for (Future<Void> mFuture : mFutures) {
+        try {
+          mFuture.get();
+        } catch (ExecutionException e) {
+          throw e.getCause();
+        }
+      }
       assertTrue(isUnlocked());
     }
   }
@@ -488,14 +495,14 @@ public class UpgradableLockTest {
   }
   
   private void lockPermanently(final Mode aMode) throws Throwable {
-    MyFuture<Boolean> mFuture = new MyFuture<>(new Callable<Boolean>() {
+    ResultThread<Boolean> mThread = new ResultThread<>(new Callable<Boolean>() {
       @Override
       public Boolean call() {
         return myLock.tryLock(aMode);
       }
     });
-    mFuture.start();
-    assertTrue(mFuture.get());
+    mThread.start();
+    assertTrue(mThread.get());
   }
 
   private boolean isUnlocked() throws Throwable {
@@ -515,7 +522,7 @@ public class UpgradableLockTest {
   }
 
   private boolean canLock(final Mode aMode) throws Throwable {
-    MyFuture<Boolean> mFuture = new MyFuture<>(new Callable<Boolean>() {
+    ResultThread<Boolean> mThread = new ResultThread<>(new Callable<Boolean>() {
       @Override
       public Boolean call() {
         boolean mSuccess = myLock.tryLock(aMode);
@@ -523,21 +530,27 @@ public class UpgradableLockTest {
         return mSuccess;
       }
     });
-    mFuture.start();
-    return mFuture.get();
+    mThread.start();
+    return mThread.get();
   }
   
-  private static final class MyFuture<T> {
+  private static final class ResultThread<T> {
     private final RunnableFuture<T> myFuture;
+    private final Thread myThread;
 
-    MyFuture(final Callable<T> aCallable) {
+    ResultThread(final Callable<T> aCallable) {
       myFuture = new FutureTask<>(aCallable);
+      myThread = new Thread(myFuture);
     }
-
+    
     void start() {
-      new Thread(myFuture).start();
+      myThread.start();
     }
-
+    
+    public void interrupt() {
+      myThread.interrupt();
+    }
+    
     T get() throws Throwable {
       try {
         return myFuture.get();
