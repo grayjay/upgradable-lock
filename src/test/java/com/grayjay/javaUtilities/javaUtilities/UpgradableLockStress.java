@@ -6,7 +6,7 @@ import java.util.concurrent.*;
 import javaUtilities.UpgradableLock.Mode;
 
 
-public class Randomized {
+public class UpgradableLockStress {
   private static final int N_THREADS =
       Runtime.getRuntime().availableProcessors() + 1;
   private static final int N_STEPS = 1_000_000;
@@ -16,7 +16,7 @@ public class Randomized {
   private final List<Thread> myThreads = new CopyOnWriteArrayList<>();
   
   public static void main(String[] aArgs) throws InterruptedException {
-    new Randomized().test();
+    new UpgradableLockStress().test();
   }
 
   private void test() throws InterruptedException {

@@ -6,7 +6,7 @@ import java.util.concurrent.locks.*;
 import javaUtilities.UpgradableLock.Mode;
 
 
-public class LockTimer {
+public class UpgradableLockPerformance {
   private static final int N_TRIALS = 10;
   private static final int N_THREADS = Runtime.getRuntime().availableProcessors() + 1;
   private static final int N_LOCKS = 1_000_000;
@@ -26,9 +26,9 @@ public class LockTimer {
     long mUpgradableNanos = 0;
     long mReentrantLockNanos = 0;
     for (int i = 0; i < N_TRIALS; i++) {
-      long mReadWriteTime = new LockTimer().timeNanos(new ReadWriteLockTest());
-      long mUpgradableTime = new LockTimer().timeNanos(new UpgradableLockTest());
-      long mReentrantLockTime = new LockTimer().timeNanos(new ReentrantLockTest());
+      long mReadWriteTime = new UpgradableLockPerformance().timeNanos(new ReadWriteLockTest());
+      long mUpgradableTime = new UpgradableLockPerformance().timeNanos(new UpgradableLockTest());
+      long mReentrantLockTime = new UpgradableLockPerformance().timeNanos(new ReentrantLockTest());
       System.out.println();
       printTrial(mReadWriteTime);
       printTrial(mUpgradableTime);
