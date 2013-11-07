@@ -96,7 +96,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void testTimeout() throws InterruptedException {
+  public void testTimeout() throws Throwable {
     lockPermanently(Mode.WRITE);
     for (Mode mMode : Mode.values()) {
       boolean mSuccess = myLock.tryLock(mMode, 100, TimeUnit.MICROSECONDS);
@@ -105,7 +105,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void testNegativeTimeout() throws InterruptedException {
+  public void testNegativeTimeout() throws Throwable {
     lockPermanently(Mode.UPGRADABLE);
     boolean mSuccess = myLock.tryLock(Mode.UPGRADABLE, -3L, TimeUnit.MICROSECONDS);
     assertFalse(mSuccess);
@@ -121,7 +121,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void testTryLockWhenNotAvailable() throws InterruptedException {
+  public void testTryLockWhenNotAvailable() throws Throwable {
     lockPermanently(Mode.WRITE);
     for (Mode mMode : Mode.values()) {
       assertFalse(myLock.tryLock(mMode));
@@ -129,7 +129,7 @@ public class UpgradableLockTest {
   }
 
   @Test
-  public void testInterruption() throws InterruptedException {
+  public void testInterruption() throws Throwable {
     final AtomicBoolean mInterrupted = new AtomicBoolean();
     Thread mThread = new Thread() {
       @Override
@@ -150,7 +150,7 @@ public class UpgradableLockTest {
   }
   
   @Test
-  public void retainInterruptedStatusWithTryLock() throws InterruptedException {
+  public void retainInterruptedStatusWithTryLock() throws Throwable {
     Thread mCurrent = Thread.currentThread();
     mCurrent.interrupt();
     assertTrue(myLock.tryLock(Mode.WRITE));
@@ -487,17 +487,15 @@ public class UpgradableLockTest {
     myLock.tryUpgrade(-10, null);
   }
   
-  private void lockPermanently(final Mode aMode) throws InterruptedException {
-    final AtomicBoolean mSuccess = new AtomicBoolean();
-    Thread mThread = new Thread() {
+  private void lockPermanently(final Mode aMode) throws Throwable {
+    MyFuture<Boolean> mFuture = new MyFuture<>(new Callable<Boolean>() {
       @Override
-      public void run() {
-        mSuccess.set(myLock.tryLock(aMode));
+      public Boolean call() {
+        return myLock.tryLock(aMode);
       }
-    };
-    mThread.start();
-    mThread.join();
-    assertTrue(mSuccess.get());
+    });
+    mFuture.start();
+    assertTrue(mFuture.get());
   }
 
   private boolean isUnlocked() throws Throwable {
@@ -517,7 +515,7 @@ public class UpgradableLockTest {
   }
 
   private boolean canLock(final Mode aMode) throws Throwable {
-    RunnableFuture<Boolean> mFuture = new FutureTask<>(new Callable<Boolean>() {
+    MyFuture<Boolean> mFuture = new MyFuture<>(new Callable<Boolean>() {
       @Override
       public Boolean call() {
         boolean mSuccess = myLock.tryLock(aMode);
@@ -525,11 +523,27 @@ public class UpgradableLockTest {
         return mSuccess;
       }
     });
-    new Thread(mFuture).start();
-    try {
-      return mFuture.get();
-    } catch (ExecutionException e) {
-      throw e.getCause();
+    mFuture.start();
+    return mFuture.get();
+  }
+  
+  private static final class MyFuture<T> {
+    private final RunnableFuture<T> myFuture;
+
+    MyFuture(final Callable<T> aCallable) {
+      myFuture = new FutureTask<>(aCallable);
+    }
+
+    void start() {
+      new Thread(myFuture).start();
+    }
+
+    T get() throws Throwable {
+      try {
+        return myFuture.get();
+      } catch (ExecutionException e) {
+        throw e.getCause();
+      }
     }
   }
 }
