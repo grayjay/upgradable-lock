@@ -1,14 +1,12 @@
 package javaUtilities;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import java.io.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
-import java.util.concurrent.locks.Condition;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javaUtilities.UpgradableLock.Mode;
 
@@ -200,49 +198,6 @@ public class UpgradableLockTest {
     };
   }
 
-//  /*
-//   * Threads 0 - n wait on a condition for a counter to reach their index
-//   * numbers. Then they increment the counter and notify the other threads. The
-//   * counter starts at zero to allow the first thread to proceed without
-//   * waiting.
-//   */
-//  @Test
-//  public void testCondition() throws InterruptedException {
-//    final Condition mIncremented = myLock.newCondition();
-//    final AtomicInteger mCounter = new AtomicInteger();
-//    ExecutorService mPool = Executors.newCachedThreadPool();
-//    int mNThreads = 10;
-//    for (int i = 0; i < mNThreads; i++) {
-//      mPool.execute(newWaitTask(i, mCounter, mIncremented));
-//    }
-//    mPool.shutdown();
-//    mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
-//    assertEquals(mNThreads, mCounter.get());
-//  }
-  
-  private Runnable newWaitTask(
-      final int aExpectedCount,
-      final AtomicInteger aCounter,
-      final Condition aIncremented) {
-    return new Runnable() {
-      @Override
-      public void run() {
-        myLock.lock(Mode.WRITE);
-        try {
-          while (aCounter.get() != aExpectedCount) {
-            aIncremented.await();
-          }
-          aCounter.incrementAndGet();
-          aIncremented.signalAll();
-        } catch (InterruptedException e) {
-          // return
-        } finally {
-          myLock.unlock();
-        }
-      }
-    };
-  }
-  
   @Test
   public void serializeWithWriter() throws Throwable {
     lockPermanently(Mode.WRITE);
@@ -277,20 +232,6 @@ public class UpgradableLockTest {
     return (Serializable) mOIS.readObject();
   }
   
-//  @Test(expected=IllegalMonitorStateException.class)
-//  public void preventWaitingWithoutWriteLock() throws InterruptedException {
-//    myLock.lock(Mode.READ);
-//    Condition mCondition = myLock.newCondition();
-//    mCondition.await();
-//  }
-//
-//  @Test(expected=IllegalMonitorStateException.class)
-//  public void preventSignallingWithoutWriteLock() {
-//    myLock.lock(Mode.UPGRADABLE);
-//    Condition mCondition = myLock.newCondition();
-//    mCondition.signal();
-//  }
-
   /*
    * One thread tries to acquire the write lock multiple times while several
    * threads use a counter to try to trade off acquiring the read lock.
@@ -426,6 +367,9 @@ public class UpgradableLockTest {
     mBarrier.await();
     myLock.upgrade();
     mThread3.get();
+    // let Thread 2 unblock and check it for uncaught exceptions
+    myLock.unlock();
+    mThread2.get();
   }
 
   @Test(expected=IllegalMonitorStateException.class)
@@ -536,8 +480,9 @@ public class UpgradableLockTest {
   }
   
   /**
-   * Thread-like object that allows the main thread to easily wait for
-   * termination, get a result value, and check for exceptions by calling get().
+   * Future-like object that allows the main thread to easily wait for
+   * termination, get a result value, and check for uncaught exceptions by
+   * calling get().
    */
   private static final class ResultThread<T> {
     private final RunnableFuture<T> myFuture;
