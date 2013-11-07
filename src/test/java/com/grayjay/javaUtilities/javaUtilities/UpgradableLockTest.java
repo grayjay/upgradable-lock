@@ -146,7 +146,7 @@ public class UpgradableLockTest {
     mThread.start();
     Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     mThread.interrupt();
-    assertTrue(mThread.get());
+    assertTrue("Thread not interrupted", mThread.get());
   }
   
   @Test
@@ -170,30 +170,29 @@ public class UpgradableLockTest {
   public void allowConcurrentReadAndUpgradableAccess() throws Throwable {
     int mNThreads = 4;
     final CyclicBarrier mBarrier = new CyclicBarrier(mNThreads);
-    final AtomicReference<Throwable> mError = new AtomicReference<Throwable>();
     ExecutorService mPool = Executors.newCachedThreadPool();
+    Collection<Future<?>> mFutures = new ArrayList<>();
     for (int i = 0; i < mNThreads - 1; i++) {
-      mPool.execute(newBarrierTask(mBarrier, Mode.READ, mError));
+      mFutures.add(mPool.submit(newBarrierTask(mBarrier, Mode.READ)));
     }
-    mPool.execute(newBarrierTask(mBarrier, Mode.UPGRADABLE, mError));
-    mPool.shutdown();
-    assertTrue(mPool.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS));
-    assertEquals(null, mError.get());
+    mFutures.add(mPool.submit(newBarrierTask(mBarrier, Mode.UPGRADABLE)));
+    for (Future<?> mFuture : mFutures) {
+      getFromFuture(mFuture);
+    }
     assertTrue(isUnlocked());
   }
   
   private Runnable newBarrierTask(
       final CyclicBarrier aBarrier,
-      final Mode aMode,
-      final AtomicReference<Throwable> aError) {
+      final Mode aMode) {
     return new Runnable() {
       @Override
       public void run() {
         myLock.lock(aMode);
         try {
           aBarrier.await();
-        } catch (Exception e) {
-          aError.set(e);
+        } catch (InterruptedException | BrokenBarrierException e) {
+          throw new RuntimeException(e);
         } finally {
           myLock.unlock();
         }
@@ -302,11 +301,11 @@ public class UpgradableLockTest {
     for (Mode mMode : mModes) {
       final AtomicInteger mCounter = new AtomicInteger();
       ExecutorService mPool = Executors.newCachedThreadPool();
-      Collection<Future<Void>> mFutures = new ArrayList<>();
+      Collection<Future<?>> mFutures = new ArrayList<>();
       for (int i = 0; i < 3; i++) {
-        mFutures.add(mPool.submit(new Callable<Void>() {
+        mFutures.add(mPool.submit(new Runnable() {
           @Override
-          public Void call() {
+          public void run() {
             try {
               while (true) {
                 myLock.lockInterruptibly(Mode.READ);
@@ -321,7 +320,7 @@ public class UpgradableLockTest {
                 }
               }
             } catch (InterruptedException e) {
-              return null; // result ignored
+              // return
             }
           }
         }));
@@ -336,12 +335,8 @@ public class UpgradableLockTest {
         myLock.unlock();
       }
       mPool.shutdownNow();
-      for (Future<Void> mFuture : mFutures) {
-        try {
-          mFuture.get();
-        } catch (ExecutionException e) {
-          throw e.getCause();
-        }
+      for (Future<?> mFuture : mFutures) {
+        getFromFuture(mFuture);
       }
       assertTrue(isUnlocked());
     }
@@ -351,20 +346,20 @@ public class UpgradableLockTest {
   public void releaseWriteWithWaitingThreads() throws Throwable {
     Mode[] mModes = {Mode.UPGRADABLE, Mode.WRITE};
     for (Mode mMode : mModes) {
-      Thread mThread = new Thread() {
+      ResultThread<Void> mThread = new ResultThread<>(new Runnable() {
         @Override
         public void run() {
           myLock.lock(Mode.READ);
           myLock.unlock();
         }
-      };
+      });
       myLock.lock(mMode);
       myLock.upgrade();
       mThread.start();
       Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
       myLock.downgrade();
       if (mMode == Mode.WRITE) myLock.unlock();
-      mThread.join();
+      mThread.get();
       if (mMode == Mode.UPGRADABLE) myLock.unlock();
       assertTrue(isUnlocked());
     }
@@ -376,19 +371,19 @@ public class UpgradableLockTest {
     Mode[] mLockModes = {Mode.UPGRADABLE, Mode.WRITE};
     for (Mode mUnlockMode : mUnlockModes) {
       for (final Mode mLockMode : mLockModes) {
-        Thread mThread = new Thread() {
+        ResultThread<Void> mThread = new ResultThread<>(new Runnable() {
           @Override
           public void run() {
             myLock.lock(mLockMode);
             myLock.upgrade();
             myLock.unlock();
           }
-        };
+        });
         myLock.lock(mUnlockMode);
         mThread.start();
         Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
         myLock.unlock();
-        mThread.join();
+        mThread.get();
         assertTrue(isUnlocked());
       }
     }
@@ -403,16 +398,15 @@ public class UpgradableLockTest {
    */
   @Test
   public void upgradeAfterBlocking() throws Throwable {
-    Thread mThread2 = new Thread() {
+    ResultThread<Void> mThread2 = new ResultThread<>(new Runnable() {
       @Override
       public void run() {
         myLock.lock(Mode.UPGRADABLE);
         myLock.unlock();
       }
-    };
-    final AtomicReference<Throwable> mError = new AtomicReference<>();
+    });
     final CyclicBarrier mBarrier = new CyclicBarrier(2);
-    Thread mThread3 = new Thread() {
+    ResultThread<Void> mThread3 = new ResultThread<>(new Runnable() {
       @Override
       public void run() {
         try {
@@ -420,19 +414,18 @@ public class UpgradableLockTest {
           mBarrier.await();
           Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
           myLock.unlock();
-        } catch (Throwable e) {
-          mError.set(e);
+        } catch (InterruptedException | BrokenBarrierException e) {
+          throw new RuntimeException(e);
         }
       }
-    };
+    });
     myLock.lock(Mode.UPGRADABLE);
     mThread2.start();
     Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     mThread3.start();
     mBarrier.await();
     myLock.upgrade();
-    mThread3.join();
-    assertEquals(null, mError.get());
+    mThread3.get();
   }
 
   @Test(expected=IllegalMonitorStateException.class)
@@ -534,12 +527,29 @@ public class UpgradableLockTest {
     return mThread.get();
   }
   
+  private static <T> T getFromFuture(Future<T> aFuture) throws Throwable {
+    try {
+      return aFuture.get();
+    } catch (ExecutionException e) {
+      throw e.getCause();
+    }
+  }
+  
+  /**
+   * Thread-like object that allows the main thread to easily wait for
+   * termination, get a result value, and check for exceptions by calling get().
+   */
   private static final class ResultThread<T> {
     private final RunnableFuture<T> myFuture;
     private final Thread myThread;
 
     ResultThread(final Callable<T> aCallable) {
       myFuture = new FutureTask<>(aCallable);
+      myThread = new Thread(myFuture);
+    }
+
+    ResultThread(final Runnable aRunnable) {
+      myFuture = new FutureTask<T>(aRunnable, null);
       myThread = new Thread(myFuture);
     }
     
