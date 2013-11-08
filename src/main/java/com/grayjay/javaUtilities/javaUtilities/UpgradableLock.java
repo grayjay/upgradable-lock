@@ -265,12 +265,12 @@ public final class UpgradableLock implements Serializable {
           break;
         default: throw new AssertionError();
       }
-      unparkAfterUnlock(aMode);
+      maybeUnparkNext();
     }
     
     void downgrade() {
       myState.set(calcState(false, true, 0));
-      unparkNext(EnumSet.of(Mode.READ), false);
+      maybeUnparkNext();
     }
     
     private boolean tryLock(Mode aMode) {
@@ -332,11 +332,7 @@ public final class UpgradableLock implements Serializable {
         }
       }
       myQueue.remove();
-      if (aMode == Mode.READ) {
-        unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE), false);
-      } else if (aMode == Mode.UPGRADABLE) {
-        unparkNext(EnumSet.of(Mode.READ), false);
-      }
+      maybeUnparkNext();
       if (mInterrupted) {
         mCurrent.interrupt();
       }
@@ -358,14 +354,14 @@ public final class UpgradableLock implements Serializable {
           parkUntil(mDeadline);
           if (System.nanoTime() > mDeadline) {
             myUpgrading = null;
-            unparkNext(EnumSet.allOf(Mode.class), true);
+            maybeUnparkNext();
             return false;
           }
         } else LockSupport.park(this);
         if (Thread.interrupted()) {
           if (aInterruptible) {
             myUpgrading = null;
-            unparkNext(EnumSet.allOf(Mode.class), true);
+            maybeUnparkNext();
             throw new InterruptedException();
           } else mInterrupted = true;
         }
@@ -406,6 +402,36 @@ public final class UpgradableLock implements Serializable {
       if (mNext != null && aModes.contains(mNext.myMode)) {
         LockSupport.unpark(mNext.myThread);
       }
+    }
+    
+    private void maybeUnparkNext() {
+      int mState = myState.get();
+      Thread mUpgrading = myUpgrading;
+      if (mUpgrading != null && canUpgrade(mState)) {
+        LockSupport.unpark(mUpgrading);
+      } else {
+        Node mNext = myQueue.peek();
+        if (mNext != null && canLock(mNext.myMode, mState)) {
+          LockSupport.unpark(mNext.myThread);
+        }
+      }
+    }
+    
+    private boolean canLock(Mode aMode, int aState) {
+      if (hasWriteHold(aState)) return false;
+      switch (aMode) {
+        case READ:
+          return !nextThreadIsWriter();
+        case UPGRADABLE:
+          return !hasUpgradableHold(aState);
+        case WRITE:
+          return !hasUpgradableHold(aState) && getReadHolds(aState) == 0;
+        default: throw new AssertionError();
+      }
+    }
+    
+    private static boolean canUpgrade(int aState) {
+      return !hasWriteHold(aState) && getReadHolds(aState) == 0;
     }
     
     private boolean nextThreadIsWriter() {
