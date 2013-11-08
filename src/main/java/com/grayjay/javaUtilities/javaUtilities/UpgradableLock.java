@@ -265,12 +265,12 @@ public final class UpgradableLock implements Serializable {
           break;
         default: throw new AssertionError();
       }
-      maybeUnparkNext();
+      tryUnparkNext();
     }
     
     void downgrade() {
       myState.set(calcState(false, true, 0));
-      maybeUnparkNext();
+      tryUnparkNext();
     }
     
     private boolean tryLock(Mode aMode) {
@@ -328,7 +328,7 @@ public final class UpgradableLock implements Serializable {
         }
       }
       myQueue.remove();
-      maybeUnparkNext();
+      tryUnparkNext();
       if (mInterrupted) {
         mCurrent.interrupt();
       }
@@ -337,7 +337,7 @@ public final class UpgradableLock implements Serializable {
     
     private void removeFailedNodeAndSignal(Node aNode) {
       myQueue.remove(aNode);
-      unparkNext(EnumSet.allOf(Mode.class), true);
+      tryUnparkNext();
     }
 
     private boolean enqueueAndUpgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
@@ -350,14 +350,14 @@ public final class UpgradableLock implements Serializable {
           parkUntil(mDeadline);
           if (System.nanoTime() > mDeadline) {
             myUpgrading = null;
-            maybeUnparkNext();
+            tryUnparkNext();
             return false;
           }
         } else LockSupport.park(this);
         if (Thread.interrupted()) {
           if (aInterruptible) {
             myUpgrading = null;
-            maybeUnparkNext();
+            tryUnparkNext();
             throw new InterruptedException();
           } else mInterrupted = true;
         }
@@ -374,8 +374,10 @@ public final class UpgradableLock implements Serializable {
       LockSupport.parkNanos(this, aDeadlineNanos - mStart);
     }
     
-    private void unparkNext(Set<Mode> aModes, boolean aUpgrade) {
-      if (aUpgrade) {
+    private void tryUnparkNext() {
+      int mState = myState.get();
+      if (hasWriteHold(mState)) return;
+      if (canUpgrade(mState)) {
         Thread mUpgrading = myUpgrading;
         if (mUpgrading != null) {
           LockSupport.unpark(mUpgrading);
@@ -383,21 +385,8 @@ public final class UpgradableLock implements Serializable {
         }
       }
       Node mNext = myQueue.peek();
-      if (mNext != null && aModes.contains(mNext.myMode)) {
+      if (mNext != null && canLock(mNext.myMode, mState)) {
         LockSupport.unpark(mNext.myThread);
-      }
-    }
-    
-    private void maybeUnparkNext() {
-      int mState = myState.get();
-      Thread mUpgrading = myUpgrading;
-      if (mUpgrading != null && canUpgrade(mState)) {
-        LockSupport.unpark(mUpgrading);
-      } else {
-        Node mNext = myQueue.peek();
-        if (mNext != null && canLock(mNext.myMode, mState)) {
-          LockSupport.unpark(mNext.myThread);
-        }
       }
     }
     
