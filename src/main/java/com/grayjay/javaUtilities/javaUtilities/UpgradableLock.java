@@ -278,25 +278,22 @@ public final class UpgradableLock implements Serializable {
       int mNewState;
       do {
         mState = myState.get();
-        if (hasWriteHold(mState)) return false;
+        if (!canLock(aMode, mState)) return false;
         switch (aMode) {
-        case READ:
-          if (nextThreadIsWriter()) return false;
-          int mReadHolds = getReadHolds(mState);
-          if (mReadHolds == MAX_READ_HOLDS) {
-            throw new TooManyHoldsException("Too many reader threads");
-          }
-          mNewState = setReadHolds(mState, mReadHolds + 1);
-          break;
-        case UPGRADABLE:
-          if (hasUpgradableHold(mState)) return false;
-          mNewState = setUpgradableHold(mState, true);
-          break;
-        case WRITE:
-          if (hasUpgradableHold(mState) || getReadHolds(mState) != 0) return false;
-          mNewState = calcState(true, false, 0);
-          break;
-        default: throw new AssertionError();
+          case READ:
+            int mReadHolds = getReadHolds(mState);
+            if (mReadHolds == MAX_READ_HOLDS) {
+              throw new TooManyHoldsException("Too many reader threads");
+            }
+            mNewState = setReadHolds(mState, mReadHolds + 1);
+            break;
+          case UPGRADABLE:
+            mNewState = setUpgradableHold(mState, true);
+            break;
+          case WRITE:
+            mNewState = calcState(true, false, 0);
+            break;
+          default: throw new AssertionError();
         }
       } while (!myState.compareAndSet(mState, mNewState));
       return true;
@@ -304,8 +301,7 @@ public final class UpgradableLock implements Serializable {
 
     private boolean tryUpgrade() {
       int mState = myState.get();
-      if (hasWriteHold(mState)) return false;
-      if (getReadHolds(mState) != 0) return false;
+      if (!canUpgrade(mState)) return false;
       int mNewState = calcState(true, false, 0);
       return myState.compareAndSet(mState, mNewState);
     }
@@ -376,18 +372,6 @@ public final class UpgradableLock implements Serializable {
     private void parkUntil(long aDeadlineNanos) {
       long mStart = System.nanoTime();
       LockSupport.parkNanos(this, aDeadlineNanos - mStart);
-    }
-    
-    private void unparkAfterUnlock(Mode aMode) {
-      switch (aMode) {
-        case WRITE:
-          unparkNext(EnumSet.of(Mode.READ, Mode.UPGRADABLE, Mode.WRITE), false); return;
-        case UPGRADABLE:
-          unparkNext(EnumSet.of(Mode.UPGRADABLE, Mode.WRITE), false); return;
-        case READ: 
-          unparkNext(EnumSet.of(Mode.WRITE), true); return;
-        default: throw new AssertionError();
-      }
     }
     
     private void unparkNext(Set<Mode> aModes, boolean aUpgrade) {
