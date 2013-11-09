@@ -18,7 +18,7 @@ public class UpgradableLockPerformance {
   public static void main(String[] aArgs) throws InterruptedException {
     printColumn("ReentrantReadWriteLock");
     printColumn("UpgradableLock");
-    printColumn("ReentrantLock)");
+    printColumn("ReentrantLock");
     System.out.println();
     System.out.println();
     System.out.printf("%,d trials with %,d threads and %,d total locks per trial (ns/lock)", N_TRIALS, N_THREADS, N_LOCKS);
