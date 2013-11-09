@@ -273,6 +273,10 @@ public final class UpgradableLock implements Serializable {
       tryUnparkNext();
     }
     
+    /**
+     * Tries to acquire the lock as long as the current state allows, and
+     * returns true on success.
+     */
     private boolean tryLock(Mode aMode) {
       int mState;
       int mNewState;
@@ -374,6 +378,10 @@ public final class UpgradableLock implements Serializable {
       LockSupport.parkNanos(this, aDeadlineNanos - mStart);
     }
     
+    /**
+     * Unparks the next thread only if the current state allows that thread to
+     * acquire the lock. Preference is given to upgrades.
+     */
     private void tryUnparkNext() {
       int mState = myState.get();
       if (hasWriteHold(mState)) return;
