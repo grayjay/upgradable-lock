@@ -48,7 +48,7 @@ public final class UpgradableLock implements Serializable {
    * from level 3 to 4. However, recursive calls to lock with the same mode do
    * not involve a change in exclusion level.
    * 
-   * 2. If the thread needs a change in exclusion level, it calls the
+   * 2. If the thread needs to change its exclusion level, it calls the
    * corresponding method on an internal, non-reentrant, upgradable lock.  The
    * internal lock is stored in variable mySync. mySync keeps a count of threads
    * with each exclusion level from 2 to 4. Those counts are the authority on
