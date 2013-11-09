@@ -257,6 +257,37 @@ public class UpgradableLockTest {
     return (Serializable) mOIS.readObject();
   }
   
+  @Test
+  public void testFirstInFirstOut() throws Throwable {
+    myLock.lock(Mode.WRITE);
+    final List<Integer> mNumbers = new ArrayList<>();
+    final List<Integer> mExpected = new ArrayList<>();
+    ExecutorService mPool = Executors.newCachedThreadPool();
+    Collection<Future<?>> mFutures = new ArrayList<>();
+    for (int i = 0; i < 10; i++) {
+      final int mNumber = i;
+      mExpected.add(mNumber);
+      mFutures.add(mPool.submit(new Runnable() {
+        @Override
+        public void run() {
+          switch (mNumber % 4) {
+            case 0: case 2: myLock.lock(Mode.WRITE); break;
+            case 1: myLock.lock(Mode.UPGRADABLE); break;
+            case 3: myLock.lock(Mode.READ); break;
+          }
+          mNumbers.add(mNumber);
+          myLock.unlock();
+        }
+      }));
+      Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    }
+    myLock.unlock();
+    for (Future<?> mFuture : mFutures) {
+      getFromFuture(mFuture);
+    }
+    Assert.assertEquals(mExpected, mNumbers);
+  }
+  
   /*
    * One thread tries to acquire the write lock multiple times while several
    * threads use a counter to try to trade off acquiring the read lock.
