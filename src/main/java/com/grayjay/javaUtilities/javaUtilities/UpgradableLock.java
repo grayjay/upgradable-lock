@@ -9,8 +9,7 @@ import java.util.concurrent.locks.*;
 /**
  * A reentrant read-write lock allowing at most one designated upgradable thread
  * that can switch between reading and writing. Other readers can acquire the
- * lock while the thread with the upgradable lock is downgraded. The upgradable
- * thread blocks while upgrading if other threads hold read locks.
+ * lock while the thread with the upgradable lock is downgraded.
  * <p>
  * A thread can initially acquire the lock in any of three modes: read,
  * upgradable, and write. A thread acquiring an upgradable lock starts in the
@@ -25,9 +24,6 @@ import java.util.concurrent.locks.*;
  * modes. Acquiring a read lock after an upgradable or write lock has no effect,
  * though it still must be released.
  * <p>
- * This class allows {@linkplain Condition condition} waits for threads that
- * hold write locks or have upgraded.
- * <p>
  * This lock allows a running thread to acquire the lock without waiting in the
  * queue, unless the thread is acquiring a read lock, and it detects a thread
  * waiting to upgrade or acquire a write lock at the front of the queue.
@@ -37,12 +33,33 @@ import java.util.concurrent.locks.*;
  */
 public final class UpgradableLock implements Serializable {
   /*
-   * This class stores each thread's lock holds in a thread local variable. It
-   * uses a subclass of AbstractQueuedSynchronizer (mySync) to manage the queue
-   * and store the number of threads with each type of lock hold. For every call
-   * to a public method, this class first uses the thread local state to
-   * determine whether the state of mySync must change. Then it delegates to
-   * mySync and updates the thread local state on success.
+   * A thread has one of four possible exclusion levels at any point in time:
+   * 1. No lock - no exclusion of other threads
+   * 2. Read lock - exclusion of level 4 threads
+   * 3. Downgraded upgradable lock - exclusion of level 3 and 4 threads
+   * 4. Write lock or upgraded upgradable lock - exclusion of all other threads
+   * 
+   * Each operation on the lock involves three steps:
+   * 
+   * 1. The thread reads a thread-local variable, myThreadState, to determine
+   * the type of holds that it already has. It determines whether the current
+   * operation involves a change in the thread's exclusion level. For example,
+   * acquiring a write lock after acquiring an upgradable lock involves a change
+   * from level 3 to 4. However, recursive calls to lock with the same mode do
+   * not involve a change in exclusion level.
+   * 
+   * 2. If the thread needs a change in exclusion level, it calls the
+   * corresponding method on an internal, non-reentrant, upgradable lock.  The
+   * internal lock is stored in variable mySync. mySync keeps a count of threads
+   * with each exclusion level from 2 to 4. Those counts are the authority on
+   * which threads hold the lock, and threads compete to update them. mySync
+   * uses a queue to store threads waiting for the lock.
+   * 
+   * 3. If the thread either does not need to change its exclusion level, or it
+   * succeeds in changing its exclusion level in mySync, the operation
+   * succeeds. The thread then updates the thread-local variable to reflect the
+   * change in its number or type of holds. If the operation fails, the thread
+   * simply returns false.
    */
   
   private static final long serialVersionUID = 0L;
@@ -190,7 +207,7 @@ public final class UpgradableLock implements Serializable {
 
   private static final class Sync {
     /*
-     * This class uses its int state to maintain 3 counts:
+     * This class uses the int state in myState to maintain 3 counts:
      * 
      * - threads with read locks
      * - threads with downgraded upgradable locks
