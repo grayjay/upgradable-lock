@@ -161,6 +161,31 @@ public class UpgradableLockTest {
   }
   
   /*
+   * Multiple reader threads wait for a lock held for writing. After the lock is
+   * released, the reader threads wait on a barrier while holding the lock. This
+   * ensures that all of the reader threads are signaled by only a single
+   * release of lock.
+   */
+  @Test
+  public void signalMultipleReaders() throws Throwable {
+    myLock.lock(Mode.WRITE);
+    int mNThreads = 5;
+    final CyclicBarrier mBarrier = new CyclicBarrier(mNThreads);
+    ExecutorService mPool = Executors.newCachedThreadPool();
+    Collection<Future<?>> mFutures = new ArrayList<>();
+    mFutures.add(mPool.submit(newBarrierTask(mBarrier, Mode.UPGRADABLE)));
+    for (int i = 0; i < mNThreads - 1; i++) {
+      mFutures.add(mPool.submit(newBarrierTask(mBarrier, Mode.READ)));
+    }
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    myLock.unlock();
+    for (Future<?> mFuture : mFutures) {
+      getFromFuture(mFuture);
+    }
+    assertTrue(isUnlocked());
+  }
+  
+  /*
    * Several threads with read locks and one thread with an upgradable lock
    * wait on a barrier.
    */
