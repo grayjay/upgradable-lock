@@ -14,7 +14,7 @@
       <version>4.11</version>
       <scope>test</scope>
     </dependency>
-   </dependencies>
+  </dependencies>
   <build>
     <plugins>
       <plugin>
@@ -24,6 +24,17 @@
           <source>1.7</source>
           <target>1.7</target>
         </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>
