@@ -93,23 +93,25 @@ public final class UpgradableLock implements Serializable {
   };
   
   /**
-   * The modes used to acquire the lock.
+   * Modes used to acquire an {@link UpgradableLock}.
    */
   public static enum Mode {
     /**
-     * Mode allowing concurrent access by other threads locking in {@code READ}
-     * mode or downgraded {@code UPGRADABLE} mode.
+     * Locking mode that allows concurrent access by other threads locking in
+     * {@code READ} mode or downgraded {@linkplain Mode#UPGRADABLE UPGRADABLE}
+     * mode.
      */
     READ,
     
     /**
-     * Mode allowing upgrading and downgrading. All other threads are excluded
-     * when upgraded, but readers are allowed when downgraded.
+     * Locking mode that allows upgrading and downgrading. All other threads are
+     * excluded when upgraded, but threads using {@linkplain Mode#READ READ}
+     * mode are allowed when downgraded.
      */
     UPGRADABLE,
     
     /**
-     * Mode excluding all other threads.
+     * Locking mode that excludes all other threads.
      */
     WRITE
   }
