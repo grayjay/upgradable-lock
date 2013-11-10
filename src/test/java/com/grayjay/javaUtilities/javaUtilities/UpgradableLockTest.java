@@ -257,6 +257,13 @@ public class UpgradableLockTest {
     return (Serializable) mOIS.readObject();
   }
   
+  /*
+   * Multiple threads start, with a pause after each one. They each wait for a
+   * lock that is already locked. The threads use different locking modes, with
+   * every other thread locking for writing. This test ensures that when the
+   * lock is released, the threads acquire the lock in the same order that they
+   * were started, with no overlap.
+   */
   @Test
   public void testFirstInFirstOut() throws Throwable {
     myLock.lock(Mode.WRITE);
@@ -282,6 +289,8 @@ public class UpgradableLockTest {
       Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     }
     myLock.unlock();
+    // ensure that interruption does not affect the order
+    mPool.shutdownNow();
     for (Future<?> mFuture : mFutures) {
       getFromFuture(mFuture);
     }
