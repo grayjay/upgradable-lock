@@ -66,8 +66,22 @@ public final class UpgradableLock implements Serializable {
   
   private static final long serialVersionUID = 0L;
   
+  /**
+   * Timeout value used internally when the timeout argument is negative.
+   * This prevents collision with the other time constants.
+   */
   private static final long MIN_TIMEOUT = -1L;
+  
+  /**
+   * Timeout value used internally after a call to tryLock(Mode) or tryUpgrade()
+   * where the thread does not wait.
+   */
   private static final long NO_WAIT = -2L;
+  
+  /**
+   * Timeout value used internally after a call to lock(Mode) or upgrade(),
+   * where the lock attempt never times out.
+   */
   private static final long NO_TIMEOUT = -3L;
   
   private final Sync mySync = new Sync();
