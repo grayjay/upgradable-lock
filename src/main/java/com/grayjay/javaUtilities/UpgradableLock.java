@@ -30,6 +30,8 @@ import java.util.concurrent.locks.*;
  * <p>
  * This class is {@linkplain Serializable serializable}. It is always
  * deserialized in the fully unlocked state.
+ * 
+ * @serial exclude
  */
 public final class UpgradableLock implements Serializable {
   /*
@@ -735,6 +737,9 @@ public final class UpgradableLock implements Serializable {
    * A new upgradable lock must be created after deserialization to allow all
    * fields to be final while avoiding serializing the thread local state. A
    * serialization proxy makes this easier.
+   */
+  /**
+   * @serial include
    */
   private static final class SerializationProxy implements Serializable {
     private static final long serialVersionUID = 0L;
