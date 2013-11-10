@@ -1,4 +1,4 @@
-package com.grayjay.javaUtilities;
+package com.grayjay.javautils;
 
 import java.io.*;
 import java.util.*;
