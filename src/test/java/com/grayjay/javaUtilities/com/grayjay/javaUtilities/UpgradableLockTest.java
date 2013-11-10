@@ -1,4 +1,4 @@
-package javaUtilities;
+package com.grayjay.javaUtilities;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -8,10 +8,10 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javaUtilities.UpgradableLock.Mode;
-
 import org.junit.*;
 import org.junit.rules.Timeout;
+
+import com.grayjay.javaUtilities.UpgradableLock.Mode;
 
 public class UpgradableLockTest {
   private static int MAX_TEST_LENGTH_MILLIS = 5_000;

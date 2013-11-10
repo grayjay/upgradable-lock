@@ -1,9 +1,9 @@
-package javaUtilities;
+package com.grayjay.javaUtilities;
 
 import java.util.*;
 import java.util.concurrent.*;
 
-import javaUtilities.UpgradableLock.Mode;
+import com.grayjay.javaUtilities.UpgradableLock.Mode;
 
 
 public class UpgradableLockStress {
