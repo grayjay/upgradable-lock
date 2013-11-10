@@ -117,12 +117,32 @@ public final class UpgradableLock implements Serializable {
    * and types of holds that the thread currently has.
    */
   private static final class ThreadState {
+    /**
+     * The value of myFirstWriteHold when the thread has no write holds.
+     */
     private static final int NO_WRITE_HOLDS = -1;
-    private static final ThreadState NEW = new ThreadState(FirstHold.NONE, 0, 0, NO_WRITE_HOLDS);
     
+    /**
+     * Type of the first hold acquired by this thread, or FirstHold.NONE if the
+     * thread does not yet hold the lock.
+     */
     private final FirstHold myFirstHold;
+    
+    /**
+     * The number of reentrant upgrades.
+     */
     private final int myUpgradeCount;
+    
+    /**
+     * The number of reentrant lock holds of any type.
+     */
     private final int myHoldCount;
+    
+    /**
+     * The number of reentrant holds at the time that the thread first acquired
+     * the lock in write mode. If the thread does not have a write hold, the
+     * value is equal to NO_WRITE_HOLDS.
+     */
     private final int myFirstWriteHold;
     
     private static enum FirstHold {
@@ -132,6 +152,8 @@ public final class UpgradableLock implements Serializable {
       WRITE;
     }
 
+    private static final ThreadState NEW = new ThreadState(FirstHold.NONE, 0, 0, NO_WRITE_HOLDS);
+    
     static ThreadState newState() {
       // reuse instance for efficiency
       return NEW;
@@ -163,7 +185,7 @@ public final class UpgradableLock implements Serializable {
     }
     
     /**
-     * Returns {@code true} if the thread holds only a read lock or a downgraded
+     * Returns true if the thread holds only a read lock or a downgraded
      * upgradable lock.
      */
     boolean canWrite() {
@@ -434,6 +456,7 @@ public final class UpgradableLock implements Serializable {
       if (hasWriteHold(aState)) return false;
       switch (aMode) {
         case READ:
+          // prevent starvation of writer threads
           return !nextThreadIsWriter();
         case UPGRADABLE:
           return !hasUpgradableHold(aState);
