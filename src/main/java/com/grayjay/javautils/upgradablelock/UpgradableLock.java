@@ -1,4 +1,4 @@
-package com.grayjay.javautils;
+package com.grayjay.javautils.upgradablelock;
 
 import java.io.*;
 import java.util.*;

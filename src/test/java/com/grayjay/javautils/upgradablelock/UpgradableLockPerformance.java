@@ -1,9 +1,9 @@
-package com.grayjay.javautils;
+package com.grayjay.javautils.upgradablelock;
 
 import java.util.concurrent.*;
 import java.util.concurrent.locks.*;
 
-import com.grayjay.javautils.UpgradableLock.Mode;
+import com.grayjay.javautils.upgradablelock.UpgradableLock.Mode;
 
 
 public class UpgradableLockPerformance {
