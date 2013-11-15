@@ -303,6 +303,7 @@ public class UpgradableLockTest {
    */
   @Test
   public void preventWriterStarvation() throws Throwable {
+    myLock = new UpgradableLock(false);
     Mode[] mModes = {Mode.WRITE, Mode.UPGRADABLE};
     for (Mode mMode : mModes) {
       final AtomicInteger mCounter = new AtomicInteger();
@@ -404,6 +405,7 @@ public class UpgradableLockTest {
    */
   @Test
   public void upgradeAfterBlocking() throws Throwable {
+    myLock = new UpgradableLock(false);
     ResultThread<Void> mThread2 = new ResultThread<>(new Runnable() {
       @Override
       public void run() {

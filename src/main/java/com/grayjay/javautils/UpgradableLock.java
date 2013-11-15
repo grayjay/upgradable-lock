@@ -24,9 +24,11 @@ import java.util.concurrent.locks.*;
  * modes. Acquiring a read lock after an upgradable or write lock has no effect,
  * though it still must be released.
  * <p>
- * This lock allows a running thread to acquire the lock without waiting in the
- * queue, unless the thread is acquiring a read lock, and it detects a thread
- * waiting to upgrade or acquire a write lock at the front of the queue.
+ * This lock uses fair queuing by default, with holds given in
+ * first-in-first-out order. The lock can also be constructed with non-fair
+ * behavior. A non-fair lock allows a running thread to try acquiring the lock
+ * without waiting in the queue, in cases where the lack of fairness could not
+ * allow reader threads to starve writer threads indefinitely.
  * <p>
  * This class is {@linkplain Serializable serializable}. It is always
  * deserialized in the fully unlocked state.
@@ -84,13 +86,31 @@ public final class UpgradableLock implements Serializable {
    */
   private static final long NO_TIMEOUT = -3L;
   
-  private final Sync mySync = new Sync();
+  private final Sync mySync;
   private final ThreadLocal<ThreadState> myThreadState = new ThreadLocal<ThreadState>() {
     @Override
     protected ThreadState initialValue() {
       return ThreadState.newState();
     }
   };
+  
+  /**
+   * Constructs a fair {@code UpgradableLock}. This is the same as calling
+   * {@code UpgradableLock(true)}.
+   */
+  public UpgradableLock() {
+    this(true);
+  }
+  
+  /**
+   * Constructs an {@code UpgradableLock} with the given choice of fairness.
+   * 
+   * @param aIsFair whether this lock should always use first-in-first-out
+   * ordering.
+   */
+  public UpgradableLock(boolean aIsFair) {
+    mySync = new Sync(aIsFair);
+  }
   
   /**
    * Modes used to acquire an {@link UpgradableLock}.
@@ -277,10 +297,15 @@ public final class UpgradableLock implements Serializable {
      */
     
     private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 2;
-    
+
+    private final boolean myIsFair;
     private final AtomicInteger myState = new AtomicInteger(calcState(false, false, 0));
     private final Queue<Node> myQueue = new ConcurrentLinkedQueue<>();
     private volatile Thread myUpgrading;
+    
+    Sync(boolean aIsFair) {
+      myIsFair = aIsFair;
+    }
     
     private static final class Node {
       final Mode myMode;
@@ -296,7 +321,9 @@ public final class UpgradableLock implements Serializable {
       if (aInterruptible && Thread.interrupted()) {
         throw new InterruptedException();
       }
-      if (tryLock(aMode)) return true;
+      if (!myIsFair || myQueue.isEmpty()) {
+        if (tryLock(aMode)) return true;
+      }
       if (aTime == NO_WAIT) return false;
       return enqueueAndLock(aMode, aInterruptible, aTime, aUnit);
     }
