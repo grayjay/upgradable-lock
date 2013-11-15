@@ -2,6 +2,7 @@ package com.grayjay.javautils.upgradablelock;
 
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.io.*;
 import java.util.*;
@@ -158,6 +159,46 @@ public class UpgradableLockTest {
     mCurrent.interrupt();
     assertFalse(myLock.tryLock(Mode.WRITE));
     assertTrue(Thread.interrupted());
+  }
+  
+  @Test
+  public void enforceFifoWithFairLock() throws Throwable {
+    myLock = new UpgradableLock(true);
+    lockPermanently(Mode.UPGRADABLE);
+    ResultThread<Void> mWaitingThread = newWaitingThread(Mode.UPGRADABLE);
+    mWaitingThread.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    assertFalse("Barged ahead of thread waiting for upgradable", myLock.tryLock(Mode.READ));
+    // check other thread for errors
+    mWaitingThread.interrupt();
+    mWaitingThread.get();
+  }
+  
+  @Test
+  public void allowBargingWithNonFairLock() throws Throwable {
+    myLock = new UpgradableLock(false);
+    lockPermanently(Mode.UPGRADABLE);
+    ResultThread<Void> mWaitingThread = newWaitingThread(Mode.UPGRADABLE);
+    mWaitingThread.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    assertTrue("Could not lock read", myLock.tryLock(Mode.READ));
+    // check other thread for errors
+    mWaitingThread.interrupt();
+    mWaitingThread.get();
+  }
+  
+  private ResultThread<Void> newWaitingThread(final Mode aLockMode) {
+    return new ResultThread<>(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          myLock.lockInterruptibly(aLockMode);
+          fail("hold succeeded");
+        } catch (InterruptedException e) {
+          // return
+        }
+      }
+    });
   }
   
   /*
