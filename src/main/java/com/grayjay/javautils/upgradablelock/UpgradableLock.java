@@ -553,24 +553,25 @@ public final class UpgradableLock implements Serializable {
     @Override
     public String toString() {
       int mState = myState.get();
-      String mMessage;
+      String mHoldsMessage;
       if (hasWriteHold(mState)) {
-        mMessage = "1 write/upgraded thread";
+        mHoldsMessage = "1 write/upgraded thread";
       } else {
         boolean mUpgradableHold = hasUpgradableHold(mState);
         int mReadHolds = getReadHolds(mState);
-        if (mReadHolds == 0 && !mUpgradableHold) mMessage = "unlocked";
+        if (mReadHolds == 0 && !mUpgradableHold) mHoldsMessage = "unlocked";
         else {
-          mMessage = "";
-          if (mUpgradableHold) mMessage += "1 downgraded thread";
+          mHoldsMessage = "";
+          if (mUpgradableHold) mHoldsMessage += "1 downgraded thread";
           if (mReadHolds > 0) {
-            if (mUpgradableHold) mMessage += ", ";
-            mMessage += mReadHolds + " read thread";
-            if (mReadHolds > 1) mMessage += "s";
+            if (mUpgradableHold) mHoldsMessage += ", ";
+            mHoldsMessage += mReadHolds + " read thread";
+            if (mReadHolds > 1) mHoldsMessage += "s";
           }
         }
       }
-      return "[" + mMessage + "]";
+      String mFairness = myIsFair ? "fair" : "non-fair";
+      return "[" + mFairness + ", " + mHoldsMessage + "]";
     }
   }
   
