@@ -160,7 +160,8 @@ public final class UpgradableLock implements Serializable {
     
     /**
      * Type of the first hold acquired by this thread, or FirstHold.NONE if the
-     * thread does not yet hold the lock.
+     * thread does not yet hold the lock. The first hold determines what types
+     * of reentrant holds are allowed.
      */
     private final FirstHold myFirstHold;
     
