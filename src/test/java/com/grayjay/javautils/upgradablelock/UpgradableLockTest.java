@@ -1,5 +1,6 @@
 package com.grayjay.javautils.upgradablelock;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -32,7 +33,11 @@ public class UpgradableLockTest {
   @Test
   public void testWriteLock() throws Throwable {
     myLock.lock(Mode.WRITE);
+    assertTrue(hasWriter());
+    myLock.lock(Mode.WRITE);
     myLock.lock(Mode.READ);
+    assertTrue(hasWriter());
+    myLock.unlock();
     assertTrue(hasWriter());
     myLock.unlock();
     assertTrue(hasWriter());
@@ -44,6 +49,7 @@ public class UpgradableLockTest {
   public void testUpgrading() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     assertTrue(hasUpgradable());
+    myLock.lock(Mode.UPGRADABLE);
     myLock.lock(Mode.READ);
     assertTrue(hasUpgradable());
     myLock.upgrade();
@@ -52,6 +58,8 @@ public class UpgradableLockTest {
     assertTrue(hasUpgradable());
     myLock.lock(Mode.WRITE);
     assertTrue(hasWriter());
+    myLock.unlock();
+    assertTrue(hasUpgradable());
     myLock.unlock();
     assertTrue(hasUpgradable());
     myLock.unlock();
@@ -93,6 +101,46 @@ public class UpgradableLockTest {
     assertTrue(hasWriter());
     myLock.downgrade();
     assertTrue(hasUpgradable());
+  }
+  
+  @Test
+  public void toStringWithNoHolds() {
+    String mPattern = "UpgradableLock[%s, unlocked]";
+    UpgradableLock mFair = new UpgradableLock(true);
+    assertEquals(String.format(mPattern, "fair"), mFair.toString());
+    UpgradableLock mNonFair = new UpgradableLock(false);
+    assertEquals(String.format(mPattern, "non-fair"), mNonFair.toString());
+  }
+  
+  @Test
+  public void toStringWithWriteHold() {
+    myLock.lock(Mode.WRITE);
+    assertToStringThreadMessage("1 write/upgraded thread");
+  }
+  
+  @Test
+  public void toStringWithUpgradableHold() throws Throwable {
+    myLock.lock(Mode.UPGRADABLE);
+    assertToStringThreadMessage("1 downgraded thread");
+    myLock.upgrade();
+    assertToStringThreadMessage("1 write/upgraded thread");
+    myLock.downgrade();
+    lockPermanently(Mode.READ);
+    lockPermanently(Mode.READ);
+    assertToStringThreadMessage("1 downgraded thread, 2 read threads");
+  }
+  
+  @Test
+  public void toStringWithReadHolds() throws Throwable {
+    lockPermanently(Mode.READ);
+    assertToStringThreadMessage("1 read thread");
+    lockPermanently(Mode.READ);
+    assertToStringThreadMessage("2 read threads");
+  }
+  
+  private void assertToStringThreadMessage(String aExpected) {
+    String mExpected = String.format("UpgradableLock[fair, %s]", aExpected);
+    assertEquals(mExpected, myLock.toString());
   }
   
   @Test
@@ -322,6 +370,7 @@ public class UpgradableLockTest {
             case 0: case 2: myLock.lock(Mode.WRITE); break;
             case 1: myLock.lock(Mode.UPGRADABLE); break;
             case 3: myLock.lock(Mode.READ); break;
+            default: throw new AssertionError();
           }
           mNumbers.add(mNumber);
           myLock.unlock();
@@ -482,9 +531,18 @@ public class UpgradableLockTest {
 
   @Test(expected=IllegalMonitorStateException.class)
   public void preventLockingWriteAfterRead() throws Throwable {
+    testLockingAfterRead(Mode.WRITE);
+  }
+
+  @Test(expected=IllegalMonitorStateException.class)
+  public void preventLockingUpgradableAfterRead() throws Throwable {
+    testLockingAfterRead(Mode.UPGRADABLE);
+  }
+
+  private void testLockingAfterRead(Mode aMode) throws Throwable {
     myLock.lock(Mode.READ);
     try {
-      myLock.lock(Mode.WRITE);
+      myLock.lock(aMode);
     } finally {
       assertTrue(hasReaders());
       myLock.unlock();
@@ -493,9 +551,22 @@ public class UpgradableLockTest {
   }
 
   @Test(expected=IllegalMonitorStateException.class)
-  public void preventUpgradeFromRead() {
-    myLock.lock(Mode.READ);
-    myLock.upgrade();
+  public void preventUpgradeWithoutLock() throws Throwable {
+    try {
+      myLock.upgrade();
+    } finally {
+      assertTrue(isUnlocked());
+    }
+  }
+
+  @Test(expected=IllegalMonitorStateException.class)
+  public void preventUpgradeFromRead() throws Throwable {
+    try {
+      myLock.lock(Mode.READ);
+      myLock.upgrade();
+    } finally {
+      assertTrue(hasReaders());
+    }
   }
 
   @Test(expected=IllegalMonitorStateException.class)
@@ -504,6 +575,7 @@ public class UpgradableLockTest {
     try {
       myLock.downgrade();
     } finally {
+      assertTrue(hasUpgradable());
       myLock.unlock();
       assertTrue(isUnlocked());
     }
