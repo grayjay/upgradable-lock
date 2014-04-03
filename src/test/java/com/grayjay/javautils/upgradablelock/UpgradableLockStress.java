@@ -84,21 +84,24 @@ public class UpgradableLockStress {
       try {
         int mStart = myCount;
         maybeSleep();
-        int mNext;
-        if (mStart % 2 == 1) {
-          mNext = mStart + 1;
-          if (random().nextInt(2) == 0) {
-            myLock.upgrade();
-            myCount = mNext;
-          } else {
-            myLock.lock(Mode.WRITE);
-            try {
+        int mNext = mStart;
+        if (mStart % 2 == 0) {
+          if (random().nextBoolean()) {
+            if (tryUpgrade()) {
+              mNext = mStart + 1;
               myCount = mNext;
-            } finally {
+              if (random().nextBoolean()) {
+                myLock.downgrade();
+              }
+            }
+          } else {
+            if (tryLock(Mode.WRITE)) {
+              mNext = mStart + 1;
+              myCount = mNext;
               myLock.unlock();
             }
           }
-        } else mNext = mStart;
+        }
         int mEnd = myCount;
         checkStartAndEnd(mNext, mEnd);
       } finally {
@@ -126,7 +129,7 @@ public class UpgradableLockStress {
     switch (random().nextInt(4)) {
       case 0: myLock.lock(aMode); return true;
       case 1: return myLock.tryLock(aMode);
-      case 2: 
+      case 2:
         try {
           myLock.lockInterruptibly(aMode);
           return true;
@@ -135,9 +138,36 @@ public class UpgradableLockStress {
         }
       case 3:
         try {
-          TimeUnit mUnit = random().nextBoolean() ? TimeUnit.NANOSECONDS : TimeUnit.MICROSECONDS;
+          TimeUnit mUnit = random().nextBoolean() ?
+              TimeUnit.NANOSECONDS :
+              TimeUnit.MICROSECONDS;
           long mTime = random().nextLong(-100, 100);
           return myLock.tryLock(aMode, mTime, mUnit);
+        } catch (InterruptedException e) {
+          return false;
+        }
+      default: throw new AssertionError();
+    }
+  }
+
+  private boolean tryUpgrade() {
+    switch (random().nextInt(4)) {
+      case 0: myLock.upgrade(); return true;
+      case 1: return myLock.tryUpgrade();
+      case 2:
+        try {
+          myLock.upgradeInterruptibly();
+          return true;
+        } catch (InterruptedException e) {
+          return false;
+        }
+      case 3:
+        try {
+          TimeUnit mUnit = random().nextBoolean() ?
+              TimeUnit.NANOSECONDS :
+              TimeUnit.MICROSECONDS;
+          long mTime = random().nextLong(-100, 100);
+          return myLock.tryUpgrade(mTime, mUnit);
         } catch (InterruptedException e) {
           return false;
         }
