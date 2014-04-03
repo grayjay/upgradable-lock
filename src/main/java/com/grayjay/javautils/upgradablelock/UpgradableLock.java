@@ -297,7 +297,10 @@ public final class UpgradableLock implements Serializable {
      * upgrade in the variable myUpgrading.
      */
     
-    private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> 2;
+    private static final int READ_SHIFT = 2;
+    private static final int WRITE_BIT = 1;
+    private static final int UPGRADABLE_BIT = 2;
+    private static final int MAX_READ_HOLDS = Integer.MAX_VALUE >>> READ_SHIFT;
 
     private final boolean myIsFair;
     private final AtomicInteger myState = new AtomicInteger(calcState(false, false, 0));
@@ -511,7 +514,7 @@ public final class UpgradableLock implements Serializable {
     }
     
     private static boolean canUpgrade(int aState) {
-      return !hasWriteHold(aState) && getReadHolds(aState) == 0;
+      return aState == calcState(false, true, 0);
     }
     
     private boolean nextThreadIsWriter() {
@@ -521,33 +524,29 @@ public final class UpgradableLock implements Serializable {
     }
     
     private static boolean hasWriteHold(int aState) {
-      return (aState & 1) != 0;
+      return (aState & WRITE_BIT) != 0;
     }
     
     private static boolean hasUpgradableHold(int aState) {
-      return (aState & 2) != 0;
+      return (aState & UPGRADABLE_BIT) != 0;
     }
     
     private static int getReadHolds(int aState) {
-      return aState >>> 2;
+      return aState >>> READ_SHIFT;
     }
     
     private static int setUpgradableHold(int aState, boolean aUpgradable) {
-      return setBit(aState, 1, aUpgradable);
-    }
-    
-    private static int setBit(int aValue, int aIndex, boolean aOn) {
-      return aOn ? aValue | (1 << aIndex) : aValue & ~(1 << aIndex);
+      return aUpgradable ? aState | UPGRADABLE_BIT : aState & ~UPGRADABLE_BIT;
     }
     
     private static int setReadHolds(int aState, int aReadHolds) {
-      return aReadHolds << 2 | aState & 3;
+      return aReadHolds << READ_SHIFT | aState & (WRITE_BIT | UPGRADABLE_BIT);
     }
 
     private static int calcState(boolean aWrite, boolean aUpgradable, int aRead) {
-      int mState = aRead << 2;
-      if (aUpgradable) mState |= 2;
-      if (aWrite) mState |= 1;
+      int mState = aRead << READ_SHIFT;
+      if (aUpgradable) mState |= UPGRADABLE_BIT;
+      if (aWrite) mState |= WRITE_BIT;
       return mState;
     }
     
