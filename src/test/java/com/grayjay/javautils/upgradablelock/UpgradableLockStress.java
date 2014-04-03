@@ -2,6 +2,7 @@ package com.grayjay.javautils.upgradablelock;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.grayjay.javautils.upgradablelock.UpgradableLock.Mode;
 
@@ -14,12 +15,13 @@ public class UpgradableLockStress {
   private final UpgradableLock myLock = new UpgradableLock();
   private int myCount = 0;
   private final List<Thread> myThreads = new CopyOnWriteArrayList<>();
+  private final AtomicReference<Throwable> myError = new AtomicReference<>();
   
-  public static void main(String[] aArgs) throws InterruptedException {
+  public static void main(String[] aArgs) throws Throwable {
     new UpgradableLockStress().test();
   }
 
-  private void test() throws InterruptedException {
+  private void test() throws Throwable {
     long mStart = System.nanoTime();
     for (int i = 0; i < N_THREADS; i++) {
       Thread mThread = new Thread(newTask());
@@ -30,6 +32,10 @@ public class UpgradableLockStress {
     }
     for (Thread mThread : myThreads) {
       mThread.join();
+    }
+    Throwable mError = myError.get();
+    if (mError != null) {
+      throw new AssertionError("Exception in other thread: ", mError);
     }
     long mTotalMicros = (System.nanoTime() - mStart) / 1_000;
     if (!myLock.tryLock(Mode.WRITE)) {
@@ -55,7 +61,7 @@ public class UpgradableLockStress {
             else write();
           }
         } catch (Throwable e) {
-          e.printStackTrace();
+          myError.compareAndSet(null, e);
         }
       }
     };
