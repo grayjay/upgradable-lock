@@ -50,6 +50,7 @@ public class UpgradableLockTest {
     myLock.lock(Mode.UPGRADABLE);
     assertTrue(hasUpgradable());
     myLock.lock(Mode.UPGRADABLE);
+    assertTrue(hasUpgradable());
     myLock.lock(Mode.READ);
     assertTrue(hasUpgradable());
     myLock.upgrade();
@@ -102,7 +103,28 @@ public class UpgradableLockTest {
     myLock.downgrade();
     assertTrue(hasUpgradable());
   }
-  
+
+  @Test
+  public void blockUpgradeWithOtherReader() throws Throwable {
+    myLock.lock(Mode.UPGRADABLE);
+    lockPermanently(Mode.READ);
+    assertFalse(myLock.tryLock(Mode.WRITE));
+  }
+
+  @Test
+  public void lockRecursively() throws Throwable {
+    int mCount = 50;
+    for (int i = 0; i < mCount; i++) {
+      if (i % 3 == 1) myLock.lock(Mode.WRITE);
+      else myLock.lock(Mode.UPGRADABLE);
+    }
+    for (int i = 0; i < mCount; i++) {
+      assertTrue(hasUpgradable() || hasWriter());
+      myLock.unlock();
+    }
+    assertTrue(isUnlocked());
+  }
+
   @Test
   public void toStringWithNoHolds() {
     String mPattern = "UpgradableLock[%s, unlocked]";
@@ -122,7 +144,7 @@ public class UpgradableLockTest {
   public void toStringWithUpgradableHold() throws Throwable {
     myLock.lock(Mode.UPGRADABLE);
     assertToStringThreadMessage("1 downgraded thread");
-    myLock.upgrade();
+    myLock.upgradeInterruptibly();
     assertToStringThreadMessage("1 write/upgraded thread");
     myLock.downgrade();
     lockPermanently(Mode.READ);
@@ -142,16 +164,15 @@ public class UpgradableLockTest {
     String mExpected = String.format("UpgradableLock[fair, %s]", aExpected);
     assertEquals(mExpected, myLock.toString());
   }
-  
+
   @Test
   public void testTimeout() throws Throwable {
     lockPermanently(Mode.WRITE);
     for (Mode mMode : Mode.values()) {
-      boolean mSuccess = myLock.tryLock(mMode, 100, TimeUnit.MICROSECONDS);
-      assertFalse(mSuccess);
+      assertFalse(myLock.tryLock(mMode, 300, TimeUnit.NANOSECONDS));
     }
   }
-  
+
   @Test
   public void testNegativeTimeout() throws Throwable {
     lockPermanently(Mode.UPGRADABLE);
@@ -177,38 +198,155 @@ public class UpgradableLockTest {
   }
 
   @Test
-  public void testInterruption() throws Throwable {
+  public void interruptDuringUpgrade() throws Throwable {
+    interruptDuringLockOrUpgrade(true);
+  }
+
+  @Test
+  public void interruptDuringLock() throws Throwable {
+    interruptDuringLockOrUpgrade(false);
+  }
+
+  private void interruptDuringLockOrUpgrade(final boolean aIsUpgrade) throws Throwable {
     ResultThread<Boolean> mThread = new ResultThread<>(new Callable<Boolean>() {
       @Override
       public Boolean call() {
+        if (aIsUpgrade) myLock.lock(Mode.UPGRADABLE);
         try {
-          myLock.lockInterruptibly(Mode.UPGRADABLE);
+          if (aIsUpgrade) myLock.upgradeInterruptibly();
+          else myLock.lockInterruptibly(Mode.WRITE);
           return false;
         } catch (InterruptedException e) {
+          assertFalse("interruption not cleared", Thread.interrupted());
           return true;
         }
       }
     });
-    lockPermanently(Mode.WRITE);
+    lockPermanently(Mode.READ);
     mThread.start();
     Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
     mThread.interrupt();
     assertTrue("Thread not interrupted", mThread.get());
   }
-  
+
+  @Test(expected=InterruptedException.class)
+  public void interruptBeforeLock() throws Throwable {
+    try {
+      Thread.currentThread().interrupt();
+      myLock.lockInterruptibly(Mode.UPGRADABLE);
+      fail("hold succeeded");
+    } finally {
+      assertFalse(Thread.interrupted());
+      assertTrue(isUnlocked());
+    }
+  }
+
+  @Test(expected=InterruptedException.class)
+  public void interruptBeforeUpgrade() throws Throwable {
+    try {
+      myLock.lock(Mode.UPGRADABLE);
+      Thread.currentThread().interrupt();
+      myLock.upgradeInterruptibly();
+      fail("upgrade succeeded");
+    } finally {
+      assertFalse(Thread.interrupted());
+      assertTrue(hasUpgradable());
+    }
+  }
+
+  @Test(expected=InterruptedException.class)
+  public void interruptBeforeReentrantLock() throws Throwable {
+    try {
+      myLock.lock(Mode.READ);
+      Thread.currentThread().interrupt();
+      myLock.lockInterruptibly(Mode.READ);
+      fail("hold succeeded");
+    } finally {
+      myLock.unlock();
+      assertTrue(isUnlocked());
+    }
+  }
+
   @Test
-  public void retainInterruptedStatusWithTryLock() throws Throwable {
-    Thread mCurrent = Thread.currentThread();
-    mCurrent.interrupt();
+  public void ignoreInterruptionWithLock() {
+    Thread.currentThread().interrupt();
+    myLock.lock(Mode.WRITE);
+    assertTrue(Thread.interrupted());
+  }
+
+  @Test
+  public void retainInterruptedStatusWithUpgrade() throws Throwable {
+    retainInterruptedStatusWithLockOrUpgrade(true);
+  }
+
+  @Test
+  public void retainInterruptedStatusWithLock() throws Throwable {
+    retainInterruptedStatusWithLockOrUpgrade(false);
+  }
+
+  private void retainInterruptedStatusWithLockOrUpgrade(final boolean aIsUpgrade) throws Throwable {
+    ResultThread<Void> mThread = new ResultThread<>(new Runnable() {
+      @Override
+      public void run() {
+        if (aIsUpgrade) {
+          myLock.lock(Mode.UPGRADABLE);
+          myLock.upgrade();
+        } else myLock.lock(Mode.WRITE);
+        assertTrue(Thread.interrupted());
+        myLock.unlock();
+      }
+    });
+    myLock.lock(Mode.READ);
+    mThread.start();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    mThread.interrupt();
+    Thread.sleep(MAX_WAIT_FOR_LOCK_MILLIS);
+    myLock.unlock();
+    mThread.get();
+  }
+
+  @Test
+  public void retainInterruptedStatusWithTryLock() {
+    Thread.currentThread().interrupt();
     assertTrue(myLock.tryLock(Mode.WRITE));
     myLock.unlock();
     assertTrue(Thread.interrupted());
+  }
+
+  @Test
+  public void retainInterruptedStatusWithFailedTryLock() throws Throwable {
     lockPermanently(Mode.READ);
-    mCurrent.interrupt();
+    Thread.currentThread().interrupt();
     assertFalse(myLock.tryLock(Mode.WRITE));
     assertTrue(Thread.interrupted());
   }
-  
+
+  @Test
+  public void tryUpgradeWhenAvailable() throws Throwable {
+    myLock.lock(Mode.UPGRADABLE);
+    assertTrue(myLock.tryUpgrade());
+    assertTrue(hasWriter());
+  }
+
+  @Test
+  public void tryUpgradeWhenNotAvailable() throws Throwable {
+    lockPermanently(Mode.READ);
+    myLock.lock(Mode.UPGRADABLE);
+    assertFalse(myLock.tryUpgrade());
+    assertTrue(hasUpgradable());
+  }
+
+  @Test
+  public void tryUpgradeWithTimeout() throws Throwable {
+    lockPermanently(Mode.READ);
+    myLock.lock(Mode.UPGRADABLE);
+    long mTime = 10_000_000;
+    long mStart = System.nanoTime();
+    assertFalse(myLock.tryUpgrade(mTime, TimeUnit.NANOSECONDS));
+    assertTrue(System.nanoTime() >= mTime + mStart);
+    assertTrue(hasUpgradable());
+  }
+
   @Test
   public void enforceFifoWithFairLock() throws Throwable {
     myLock = new UpgradableLock(true);
@@ -589,7 +727,22 @@ public class UpgradableLockTest {
       assertTrue(isUnlocked());
     }
   }
-  
+
+  @Test(expected=IllegalMonitorStateException.class)
+  public void preventDowngradeWithoutLock() {
+    myLock.downgrade();
+  }
+
+  @Test(expected=IllegalMonitorStateException.class)
+  public void preventDowngradeFromRead() throws Throwable {
+    try {
+      myLock.lock(Mode.READ);
+      myLock.downgrade();
+    } finally {
+      assertTrue(hasReaders());
+    }
+  }
+
   @Test(expected=NullPointerException.class)
   public void disallowNullLockModeWithLock() {
     myLock.lock(null);
