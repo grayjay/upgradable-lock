@@ -70,9 +70,6 @@ final class Sync {
   }
 
   boolean lock(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-    if (aInterruptible && Thread.interrupted()) {
-      throw new InterruptedException();
-    }
     if (!myIsFair || myQueue.isEmpty()) {
       if (tryLock(aMode)) return true;
     }
@@ -81,9 +78,6 @@ final class Sync {
   }
 
   boolean upgrade(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
-    if (aInterruptible && Thread.interrupted()) {
-      throw new InterruptedException();
-    }
     if (tryUpgrade()) return true;
     if (aTime == NO_WAIT) return false;
     return enqueueAndUpgrade(aInterruptible, aTime, aUnit);

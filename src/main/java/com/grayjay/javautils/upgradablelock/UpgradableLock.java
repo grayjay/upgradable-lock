@@ -418,6 +418,9 @@ public final class UpgradableLock implements Serializable {
   }
   
   private boolean lockInternal(Mode aMode, boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+    if (aInterruptible && Thread.interrupted()) {
+      throw new InterruptedException();
+    }
     switch (aMode) {
       case READ: return readLockInternal(aInterruptible, aTime, aUnit);
       case UPGRADABLE: return upgradableLockInternal(aInterruptible, aTime, aUnit);
@@ -465,6 +468,9 @@ public final class UpgradableLock implements Serializable {
   }
   
   private boolean upgradeInternal(boolean aInterruptible, long aTime, TimeUnit aUnit) throws InterruptedException {
+    if (aInterruptible && Thread.interrupted()) {
+      throw new InterruptedException();
+    }
     ThreadState mOld = myThreadState.get();
     if (mOld.isUnlocked()) {
       throw new IllegalMonitorStateException("Cannot upgrade without lock");
