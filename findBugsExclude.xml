@@ -1,0 +1,8 @@
+<FindBugsFilter>
+  <Match>
+    <!-- This class uses a serialization proxy, so non-transient,
+	 non-serializable fields are not a problem. -->
+    <Class name="com.grayjay.javautils.upgradablelock.UpgradableLock" />
+    <Bug code="Se" />
+  </Match>
+</FindBugsFilter>
