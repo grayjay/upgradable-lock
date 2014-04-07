@@ -7,20 +7,20 @@ import java.util.concurrent.TimeUnit;
 /**
  * A reentrant read-write lock allowing at most one designated upgradable thread
  * that can switch between reading and writing. Other readers can acquire the
- * lock while the thread with the upgradable lock is downgraded.
+ * lock while the thread with the upgradable hold is downgraded.
  * <p>
  * A thread can initially acquire the lock in any of three modes: read,
- * upgradable, and write. A thread acquiring an upgradable lock starts in the
- * downgraded state. All locks and unlocks are nested. This means that a thread
- * cannot acquire a write lock, then a read lock, and then release the write
- * lock without releasing the read lock. Calls to downgrade must be matched by
- * calls to upgrade. Calls to upgrade and downgrade can be interleaved with
- * calls to lock and unlock in any order, as long as the thread has an
- * upgradable or write lock when upgrading or downgrading. A thread with only a
- * read lock cannot acquire an upgradable or write lock. Any thread with an
- * upgradable or write lock can acquire the lock again in any of the three
- * modes. Acquiring a read lock after an upgradable or write lock has no effect,
- * though it still must be released.
+ * upgradable, and write. A thread acquiring the lock in upgradable mode starts
+ * in the downgraded state. All locks and unlocks are nested. This means that a
+ * thread cannot acquire a write hold, then a read hold, and then release the
+ * write hold without releasing the read hold. Calls to downgrade must be
+ * matched by calls to upgrade. Calls to upgrade and downgrade can be
+ * interleaved with calls to lock and unlock in any order, as long as the thread
+ * has an upgradable or write hold when upgrading or downgrading. A thread with
+ * only a read hold cannot acquire the lock in upgradable or write mode. Any
+ * thread with an upgradable or write hold can acquire the lock again in any of
+ * the three modes. Acquiring a read hold after an upgradable or write hold has
+ * no effect, though it still must be released.
  * <p>
  * This lock uses fair queuing by default, with holds given in
  * first-in-first-out order. The lock can also be constructed with non-fair
@@ -118,7 +118,9 @@ public final class UpgradableLock implements Serializable {
 
   /**
    * Thrown when a thread attempts to acquire or upgrade the lock when the lock
-   * already has the maximum number of holds.
+   * already has the maximum number of holds. The maximum number of reentrant
+   * holds or upgrades for a single thread is 2<sup>31</sup>-1. The maximum
+   * number of concurrent reader threads is 2<sup>29</sup>-1.
    */
   public static final class TooManyHoldsException extends RuntimeException {
     private static final long serialVersionUID = 0L;
@@ -378,7 +380,7 @@ public final class UpgradableLock implements Serializable {
   }
 
   /**
-   * Tries to upgrade the thread's hold on the lock for the given amount of time
+   * Tries to upgrade the thread's hold on the lock within the given time limit
    * and returns {@code true} if it succeeds.
    * 
    * @see UpgradableLock#upgrade()
@@ -394,7 +396,7 @@ public final class UpgradableLock implements Serializable {
   /**
    * Downgrades the thread's hold on the lock. This allows other reader threads
    * to acquire the lock, if the thread has no unmatched upgrades and does not
-   * hold a write lock.
+   * have a write hold.
    * 
    * @throws IllegalMonitorStateException
    *         if the thread has not upgraded.
