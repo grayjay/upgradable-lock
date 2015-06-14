@@ -204,7 +204,7 @@ public final class UpgradableLock implements Serializable {
     }
     
     /**
-     * Returns true if the thread holds only a read lock or a downgraded
+     * Returns true if the thread holds a write lock or an upgraded
      * upgradable lock.
      */
     boolean canWrite() {
